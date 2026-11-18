@@ -1,0 +1,3 @@
+import { Link, useLocation } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+export function ConfirmEmailPage(){const {user}=useAuth();const location=useLocation();const email=(location.state as any)?.email;return <div className="auth-page"><section className="auth-card center"><div className="success-icon">✉</div><h1>{user?'E-mail confirmado':'Confirme seu e-mail'}</h1><p>{user?'Sua conta está pronta para finalizar pedidos.':`Enviamos uma mensagem de confirmação${email?` para ${email}`:''}. Abra o link recebido antes de entrar.`}</p><Link className="primary button-link" to={user?'/':'/login'}>{user?'Ir para o catálogo':'Voltar para entrar'}</Link></section></div>}

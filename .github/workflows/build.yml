@@ -1,0 +1,21 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://pkpihrxucorfbniltdtk.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_lEJkwAfFUbo-yvqGeQIB1Q_T-W3pS_e

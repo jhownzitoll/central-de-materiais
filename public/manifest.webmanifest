@@ -1,0 +1,9 @@
+{
+  "name": "Central de Materiais",
+  "short_name": "Materiais",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F8F6",
+  "theme_color": "#102C2A",
+  "icons": []
+}
