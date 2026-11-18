@@ -1,3 +1,3 @@
 # Central de Materiais
 
-Plataforma multi-loja de materiais para marcenaria.
+Bootstrap da versão R4 multi-loja em andamento.
