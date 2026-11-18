@@ -50,6 +50,22 @@ export function LoginPage() {
     }
   }
 
+  const signInMagicLink = async () => {
+    if (!supabase || !hasSupabaseConfig) { setMessage('Autenticação não configurada.'); return }
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!normalizedEmail || !normalizedEmail.includes('@')) { setMessage('Informe primeiro seu e-mail.'); return }
+    setMessage('')
+    setBusy(true)
+    const { error } = await supabase.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: { emailRedirectTo: `${siteUrl()}/login`, shouldCreateUser: true }
+    })
+    setBusy(false)
+    setMessage(error
+      ? `Não foi possível enviar o link de acesso: ${error.message}`
+      : 'Se o endereço puder receber mensagens, um link de acesso será enviado. Abra-o pelo mesmo navegador. Se for a primeira entrada, sua conta será cadastrada após a verificação do e-mail.')
+  }
+
   return <div className="auth-page">
     <section className="auth-card">
       <div className="auth-brand"><span className="brand-mark">CM</span><div><h1>Entrar</h1><p>Acesse sua conta para enviar pedidos ou administrar a loja.</p></div></div>
@@ -59,6 +75,7 @@ export function LoginPage() {
         {message && <div className="status error" role="alert">{message}</div>}
         <button className="primary" disabled={busy}>{busy ? 'Entrando…' : 'Entrar com e-mail'}</button>
       </form>
+      <button type="button" className="secondary full" disabled={busy} onClick={() => void signInMagicLink()}>Receber link de acesso por e-mail</button>
       <div className="social-divider"><span>ou entre com</span></div>
       <div className="social-providers">
         <button type="button" className="social-provider" onClick={() => void signInSocial('google')} disabled={busy}><span className="social-provider-symbol google-symbol" aria-hidden="true">G</span> Google</button>
