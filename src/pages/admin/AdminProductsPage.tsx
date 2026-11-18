@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AdminNav } from '../../components/admin/AdminNav'
 import { supabase } from '../../lib/supabase'
 import { formatMoney } from '../../lib/money'
+import { priceWithPlatformFee, DEFAULT_PLATFORM_FEE_BPS } from '../../lib/platformFee'
 import { useAuth } from '../../hooks/useAuth'
 import type { Category, Product, Store } from '../../types'
 
@@ -17,6 +18,8 @@ export function AdminProductsPage() {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Editable | null>(null)
   const [message, setMessage] = useState('')
+  const [feeBps,setFeeBps] = useState(DEFAULT_PLATFORM_FEE_BPS)
+  useEffect(()=>{if(supabase) void supabase.from('platform_config').select('platform_fee_bps').eq('id',1).maybeSingle().then(({data})=>{if(data?.platform_fee_bps != null)setFeeBps(Number(data.platform_fee_bps))})},[])
 
   const loadStores = async () => {
     if (!supabase) return
@@ -80,14 +83,15 @@ export function AdminProductsPage() {
       <select value={storeId} onChange={(e)=>setStoreId(e.target.value)}>{stores.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select>
       <input className="admin-search" placeholder="Buscar SKU, código ou nome..." value={query} onChange={(e)=>setQuery(e.target.value)} />
     </div>
-    <p className="small-note">Editando tabela de preços: <strong>{currentStore?.name || '—'}</strong></p>
-    <div className="product-admin-list">{filtered.map(p=><div className="admin-product-row" key={p.id}><div className="admin-thumb">{p.image_key||p.sku}</div><div><strong>{p.name}</strong><small>{p.sku}{p.store_product_code?` · Cód. loja ${p.store_product_code}`:''} · {p.category_name}</small></div><div className="admin-price"><strong>{formatMoney(p.promotional_price ?? p.price)}</strong><small>{p.offer_active?'Ativo':'Inativo'}</small></div><button className="secondary" onClick={()=>setSelected({...p})}>Editar</button></div>)}</div></section>
+    <p className="small-note">Editando preços-base da loja: <strong>{currentStore?.name || '—'}</strong>. O catálogo adiciona automaticamente {(feeBps/100).toLocaleString('pt-BR')}% por unidade, sem taxa extra no checkout.</p>
+    <div className="product-admin-list">{filtered.map(p=><div className="admin-product-row" key={p.id}><div className="admin-thumb">{p.image_key||p.sku}</div><div><strong>{p.name}</strong><small>{p.sku}{p.store_product_code?` · Cód. loja ${p.store_product_code}`:''} · {p.category_name}</small></div><div className="admin-price"><strong>{formatMoney(priceWithPlatformFee(p.promotional_price ?? p.price,feeBps))}</strong><small>Catálogo · base {formatMoney(p.promotional_price ?? p.price)}</small><small>{p.offer_active?'Ativo':'Inativo'}</small></div><button className="secondary" onClick={()=>setSelected({...p})}>Editar</button></div>)}</div></section>
 
     {selected && <div className="modal-shell"><button className="overlay open" onClick={()=>setSelected(null)} /><section className="edit-panel"><div className="drawer-head"><h2>{selected.id?`Editar ${selected.sku}`:'Novo produto'}</h2><button className="close" onClick={()=>setSelected(null)}>×</button></div><form className="edit-form" onSubmit={save}>
       <div className="form-grid"><label className="form-field"><span>SKU global</span><input value={selected.sku||''} onChange={e=>setSelected({...selected,sku:e.target.value})} disabled={Boolean(selected.id)} required /></label><label className="form-field"><span>Código no sistema da loja</span><input value={selected.store_product_code||''} onChange={e=>setSelected({...selected,store_product_code:e.target.value})} /></label></div>
       <label className="form-field"><span>Produto</span><input value={selected.name||''} onChange={e=>setSelected({...selected,name:e.target.value})} required /></label>
       <div className="form-grid"><label className="form-field"><span>Categoria</span><select value={selected.category_id||''} onChange={e=>setSelected({...selected,category_id:e.target.value||null})}><option value="">Sem categoria</option>{categories.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label className="form-field"><span>Unidade</span><input value={selected.unit||''} onChange={e=>setSelected({...selected,unit:e.target.value})} /></label></div>
-      <div className="form-grid"><label className="form-field"><span>Preço da {currentStore?.name}</span><input type="number" min="0" step="0.01" value={selected.price??0} onChange={e=>setSelected({...selected,price:Number(e.target.value)})} /></label><label className="form-field"><span>Ordem</span><input type="number" value={selected.display_order??999} onChange={e=>setSelected({...selected,display_order:Number(e.target.value)})} /></label></div>
+      <div className="form-grid"><label className="form-field"><span>Preço-base da {currentStore?.name} (sem taxa)</span><input type="number" min="0" step="0.01" value={selected.price??0} onChange={e=>setSelected({...selected,price:Number(e.target.value)})} /></label><label className="form-field"><span>Ordem</span><input type="number" value={selected.display_order??999} onChange={e=>setSelected({...selected,display_order:Number(e.target.value)})} /></label></div>
+      <div className="status">Preço final por unidade no catálogo: <strong>{formatMoney(priceWithPlatformFee(Number(selected.promotional_price ?? selected.price ?? 0),feeBps))}</strong> ({(feeBps/100).toLocaleString('pt-BR')}% embutido, sem cobrança separada).</div>
       <label className="form-field"><span>Descrição</span><textarea value={selected.description||''} onChange={e=>setSelected({...selected,description:e.target.value})} /></label>
       <div className="form-grid"><label className="form-field"><span>Marca</span><input value={selected.brand||''} onChange={e=>setSelected({...selected,brand:e.target.value})} /></label><label className="form-field"><span>Image key</span><input value={selected.image_key||''} placeholder={selected.sku||'M001'} onChange={e=>setSelected({...selected,image_key:e.target.value})} /></label></div>
       <label className="form-field"><span>Observação de disponibilidade</span><input value={selected.availability_note||''} onChange={e=>setSelected({...selected,availability_note:e.target.value})} /></label>
