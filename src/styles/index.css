@@ -20,3 +20,18 @@
 .google-symbol{color:#4285f4}.facebook-symbol{background:#1877f2;color:#fff;border-radius:5px;font-family:Arial,sans-serif;width:24px;height:24px;font-size:21px;display:grid;place-items:end center;overflow:hidden}
 .social-note{font-size:11px!important;line-height:1.45;color:#708077;margin:14px 0 0}
 @media(max-width:360px){.social-providers{grid-template-columns:1fr}.auth-card{padding:17px}}
+
+/* Cadastro fiscal, endereco e recebimento do pedido */
+.details-heading{font-size:15px;font-weight:800;margin:19px 0 12px;color:var(--dark)}
+.details-caption{font-size:12px!important;color:var(--muted);margin:0 0 13px!important;line-height:1.5}
+.details-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;align-items:start;margin-bottom:10px}
+.details-grid .form-field{min-width:0;margin-bottom:3px}
+.details-grid>div{min-width:0;overflow-wrap:anywhere;font-size:13px}
+.details-grid>div small{color:var(--muted);font-size:11px}
+.details-grid>div p{margin:5px 0 12px}
+.delivery-choice{padding:13px;border:1px solid var(--line);border-radius:12px;margin:14px 0 8px}
+.delivery-choice h4{font-size:13px;margin:0 0 9px}
+.delivery-choice label{display:flex;gap:9px;align-items:center;padding:6px 0;font-size:12px;cursor:pointer}
+.delivery-choice input{accent-color:var(--green);width:17px;height:17px}
+.delivery-summary{font-size:12px;color:#4f665b;line-height:1.5;background:var(--mint);padding:10px;border-radius:9px;margin:8px 0 14px}
+@media(max-width:600px){.details-grid{grid-template-columns:1fr}}
