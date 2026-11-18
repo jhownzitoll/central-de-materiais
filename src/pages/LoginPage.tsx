@@ -21,6 +21,30 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { user, loading, canManageStores } = useAuth()
+  const [providerState, setProviderState] = useState<{ google: boolean | null; facebook: boolean | null }>({ google: null, facebook: null })
+
+  useEffect(() => {
+    const url = import.meta.env.VITE_SUPABASE_URL?.trim()
+    const publicKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY)?.trim()
+    if (!url || !publicKey) return
+    let alive = true
+    fetch(`${url.replace(/\\/$/, '')}/auth/v1/settings`, { headers: { apikey: publicKey } })
+      .then(async response => {
+        if (!response.ok) throw new Error('Configuração de Auth indisponível')
+        return response.json()
+      })
+      .then(settings => {
+        if (!alive) return
+        const external = settings?.external
+        setProviderState({
+          google: typeof external?.google === 'boolean' ? external.google : null,
+          facebook: typeof external?.facebook === 'boolean' ? external.facebook : null,
+        })
+      })
+      .catch(() => { /* Sem status público: o botão ainda poderá tentar o provedor. */ })
+    return () => { alive = false }
+  }, [])
+
   const requested = params.get('returnTo')
   const safeReturn = requested && requested.startsWith('/') && !requested.startsWith('//') && !requested.includes('\\') ? requested : null
 
@@ -39,6 +63,10 @@ export function LoginPage() {
   }
 
   const signInSocial = async (provider: SocialProvider) => {
+    if (providerState[provider] === false) {
+      setMessage(`O login com ${provider === 'google' ? 'Google' : 'Facebook'} está aguardando a ativação no painel do Supabase.`)
+      return
+    }
     if (!supabase || !hasSupabaseConfig) { setMessage('Autenticação não configurada.'); return }
     setMessage('')
     setBusy(true)
@@ -78,8 +106,8 @@ export function LoginPage() {
       <button type="button" className="secondary full" disabled={busy} onClick={() => void signInMagicLink()}>Receber link de acesso por e-mail</button>
       <div className="social-divider"><span>ou entre com</span></div>
       <div className="social-providers">
-        <button type="button" className="social-provider" onClick={() => void signInSocial('google')} disabled={busy}><span className="social-provider-symbol google-symbol" aria-hidden="true">G</span> Google</button>
-        <button type="button" className="social-provider" onClick={() => void signInSocial('facebook')} disabled={busy}><span className="social-provider-symbol facebook-symbol" aria-hidden="true">f</span> Facebook</button>
+        <button type="button" className="social-provider" onClick={() => void signInSocial('google')} disabled={busy}><span className="social-provider-symbol google-symbol" aria-hidden="true">G</span> Google{providerState.google === false ? ' · em configuração' : ''}</button>
+        <button type="button" className="social-provider" onClick={() => void signInSocial('facebook')} disabled={busy}><span className="social-provider-symbol facebook-symbol" aria-hidden="true">f</span> Facebook{providerState.facebook === false ? ' · em configuração' : ''}</button>
       </div>
       <p className="social-note">A entrada com redes sociais exige habilitação do provedor na administração do Supabase. Instagram não oferece integração nativa de login nesta configuração.</p>
       <div className="auth-links"><Link to="/cadastro">Criar conta</Link><Link to="/recuperar-senha">Esqueci minha senha</Link></div>
