@@ -7,6 +7,7 @@ import { ProductCard } from '../components/catalog/ProductCard'
 import { CartDrawer } from '../components/cart/CartDrawer'
 import { useCart } from '../hooks/useCart'
 import { formatMoney } from '../lib/money'
+import { priceWithPlatformFee, DEFAULT_PLATFORM_FEE_BPS } from '../lib/platformFee'
 
 const demoStore: Store = { id: 'demo-casa-do-mdf', slug: 'casa-do-mdf', name: 'Casa do MDF', legal_name: null, cnpj: null, email: null, phone: null, description: null, logo_key: null, logo_url: null, active: true, featured: true, display_order: 1 }
 const demoSettings: StoreSettings = { store_id: demoStore.id, subtitle: 'Materiais para marcenaria', seller_name: 'Vendedor principal', seller_whatsapp: '5547920032476', seller_email: null, price_notice: 'Preços publicados pela Casa do MDF e sujeitos à confirmação comercial.', order_instructions: null, pickup_info: null, delivery_info: null }
@@ -24,10 +25,11 @@ export function CatalogPage() {
       supabase.from('stores').select('*').eq('id', storeId).maybeSingle(), supabase.from('store_settings').select('*').eq('store_id', storeId).maybeSingle(), supabase.from('categories').select('*').eq('active', true).order('display_order'), supabase.from('products').select('*, categories(name)').eq('status', 'ACTIVE').order('display_order'), supabase.from('store_offers').select('*').eq('store_id', storeId).eq('active', true),
     ])
     if (storeResult.error || catResult.error || prodResult.error || offerResult.error || !storeResult.data) { setError('Não foi possível carregar o catálogo agora. Tente novamente.'); setLoading(false); return }
+    const platformFeeBps = Number(configResult.data.platform_fee_bps ?? DEFAULT_PLATFORM_FEE_BPS)
     const offerMap = new Map((offerResult.data || []).map((o: any) => [o.product_id, o]))
     const normalizedProducts = (prodResult.data || []).flatMap((p: any) => {
       const o: any = offerMap.get(p.id); if (!o) return []; const price = Number(o.price); const promo = o.promotional_price == null ? null : Number(o.promotional_price)
-      return [{ ...p, category_name: p.categories?.name || 'Outros', offer_id: o.id, store_id: storeId, store_name: storeResult.data.name, store_slug: storeResult.data.slug, store_product_code: o.store_product_code, custom_name: o.custom_name, custom_description: o.custom_description, custom_brand: o.custom_brand, section_label: o.section_label, price, promotional_price: promo, effective_price: promo ?? price, offer_active: o.active, availability_note: o.availability_note, name: o.custom_name || p.name, description: o.custom_description || p.description, brand: o.custom_brand || p.brand } as Product]
+      return [{ ...p, category_name: p.categories?.name || 'Outros', offer_id: o.id, store_id: storeId, store_name: storeResult.data.name, store_slug: storeResult.data.slug, store_product_code: o.store_product_code, custom_name: o.custom_name, custom_description: o.custom_description, custom_brand: o.custom_brand, section_label: o.section_label, price, promotional_price: promo, effective_price: priceWithPlatformFee(promo ?? price, platformFeeBps), offer_active: o.active, availability_note: o.availability_note, name: o.custom_name || p.name, description: o.custom_description || p.description, brand: o.custom_brand || p.brand } as Product]
     })
     setProducts(normalizedProducts); setCategories((catResult.data || []) as Category[]); setStore(storeResult.data as Store); if (settingsResult.data) setSettings(settingsResult.data as StoreSettings); setLoading(false)
   }
