@@ -28,7 +28,7 @@ export function LoginPage() {
     const publicKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY)?.trim()
     if (!url || !publicKey) return
     let alive = true
-    fetch(`${url.replace(/\\/$/, '')}/auth/v1/settings`, { headers: { apikey: publicKey } })
+    fetch(new URL('/auth/v1/settings', url).toString(), { headers: { apikey: publicKey } })
       .then(async response => {
         if (!response.ok) throw new Error('Configuração de Auth indisponível')
         return response.json()
