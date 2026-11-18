@@ -21,7 +21,10 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { user, loading, canManageStores } = useAuth()
-  const [providerState, setProviderState] = useState<{ google: boolean | null; facebook: boolean | null }>({ google: null, facebook: null })
+  const [providerState, setProviderState] = useState<{ google: boolean; facebook: boolean }>({
+    google: import.meta.env.VITE_GOOGLE_OAUTH_ENABLED === 'true',
+    facebook: import.meta.env.VITE_FACEBOOK_OAUTH_ENABLED === 'true',
+  })
 
   useEffect(() => {
     const url = import.meta.env.VITE_SUPABASE_URL?.trim()
@@ -37,8 +40,8 @@ export function LoginPage() {
         if (!alive) return
         const external = settings?.external
         setProviderState({
-          google: typeof external?.google === 'boolean' ? external.google : null,
-          facebook: typeof external?.facebook === 'boolean' ? external.facebook : null,
+          google: import.meta.env.VITE_GOOGLE_OAUTH_ENABLED === 'true' || external?.google === true,
+          facebook: import.meta.env.VITE_FACEBOOK_OAUTH_ENABLED === 'true' || external?.facebook === true,
         })
       })
       .catch(() => { /* Sem status público: o botão ainda poderá tentar o provedor. */ })
