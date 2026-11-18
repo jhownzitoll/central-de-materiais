@@ -61,7 +61,7 @@ export function ConfirmEmailPage() {
     try { sessionStorage.setItem(PENDING_EMAIL_KEY, normalized) } catch {}
     setSeconds(60)
     setCode('')
-    setMessage('Se o cadastro estiver pendente, um novo código será enviado ao e-mail informado.')
+    setMessage('Se o cadastro estiver pendente, uma nova mensagem de confirmação será enviada ao e-mail informado.')
   }
 
   if (loading) return <div className="page-state">Verificando cadastro…</div>
@@ -78,7 +78,7 @@ export function ConfirmEmailPage() {
     <section className="auth-card center">
       <div className="success-icon" aria-hidden="true">✉</div>
       <h1>Confirme seu e-mail</h1>
-      <p>Enviamos um código de seis dígitos para seu e-mail. Digite-o abaixo para concluir o cadastro.</p>
+      <p>Confira o e-mail de confirmação. Se recebeu um código de seis dígitos, digite-o abaixo. Se recebeu um link de confirmação, abra-o para concluir o cadastro.</p>
       <form onSubmit={verify} className="verification-form">
         <label className="form-field">
           <span>E-mail do cadastro</span>
@@ -106,7 +106,7 @@ export function ConfirmEmailPage() {
         </button>
       </form>
       <button type="button" className="link-button verification-resend" disabled={resending || seconds > 0} onClick={() => void resend()}>
-        {resending ? 'Enviando…' : seconds > 0 ? `Reenviar código em ${seconds}s` : 'Reenviar código'}
+        {resending ? 'Enviando…' : seconds > 0 ? `Reenviar mensagem em ${seconds}s` : 'Reenviar confirmação'}
       </button>
       <div className="auth-links">
         <Link to="/cadastro">Corrigir meus dados</Link>
