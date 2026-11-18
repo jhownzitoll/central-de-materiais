@@ -4,6 +4,8 @@ import type { CreateOrderResult, Product, Store, StoreSettings } from '../../typ
 import { useCart } from '../../hooks/useCart'
 import { useAuth } from '../../hooks/useAuth'
 import { formatMoney } from '../../lib/money'
+import { buildOrderReport } from '../../lib/orderReport'
+import type { Order, OrderItem } from '../../types'
 import { hasCompleteCheckoutProfile } from '../../lib/customerDetails'
 import { hasSupabaseConfig, supabase } from '../../lib/supabase'
 
@@ -17,33 +19,12 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
   const [error, setError] = useState('')
   const [result, setResult] = useState<CreateOrderResult | null>(null)
   const [report, setReport] = useState('')
+  const [reportError, setReportError] = useState('')
 
   const items = useMemo(() => lines.map((line) => ({ ...line, product: products.find((p) => p.sku === line.sku) })).filter((x): x is typeof x & { product: Product } => Boolean(x.product)), [lines, products])
   const productPrice = (p: Product) => p.effective_price ?? p.promotional_price ?? p.price
   const total = items.reduce((sum, item) => sum + item.qty * productPrice(item.product), 0)
 
-  const buildReport = (order: CreateOrderResult) => {
-    const customer = profile?.trade_name || profile?.full_name || profile?.email || 'Cliente'
-    const itemLines = items.map(({ product, qty }) => {
-      const price = productPrice(product)
-      const code = product.store_product_code || product.sku
-      return `${qty}x ${code} · ${product.name}\n${formatMoney(price)} / ${product.unit} · Subtotal ${formatMoney(price * qty)}`
-    }).join('\n\n')
-    return [
-      `PEDIDO ${order.public_number}`,
-      `Loja: ${store.name}`,
-      `Cliente: ${customer}`,
-      profile?.document ? `${profile.person_type}: ${profile.document}` : '',
-      profile?.legal_name ? `Razão social: ${profile.legal_name}` : '',
-      profile?.full_name ? `${profile.person_type==='CNPJ'?'Responsável':'Nome'}: ${profile.full_name}` : '',
-      profile?.phone ? `Contato: ${profile.phone}` : '',
-      profile?.email ? `E-mail: ${profile.email}` : '',
-      `Modalidade: ${deliveryMethod==='DELIVERY'?'Entrega':'Retirada na loja'}`,
-      deliveryMethod==='DELIVERY' ? `Endereço: ${profile?.delivery_street || ''}, ${profile?.delivery_number || ''}${profile?.delivery_complement ? ' - '+profile.delivery_complement : ''} - ${profile?.delivery_district || ''}, ${profile?.delivery_city || ''}/${profile?.delivery_state || ''} - CEP ${profile?.delivery_postal_code || ''}` : '',
-      '', itemLines, '', `TOTAL: ${formatMoney(order.total)}`,
-      notes.trim() ? `Observações: ${notes.trim()}` : '',
-    ].filter(Boolean).join('\n')
-  }
 
   const checkout = async () => {
     setError('')
@@ -54,20 +35,44 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
     setSubmitting(true)
     const key = crypto.randomUUID ? crypto.randomUUID() : `order-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const payload = items.map((item) => ({ offer_id: item.product.offer_id, sku: item.product.sku, qty: item.qty, expected_price: productPrice(item.product) }))
-    const { data, error: rpcError } = await supabase.rpc('create_order_v2', { p_store_id: store.id, p_items: payload, p_notes: notes.trim() || null, p_idempotency_key: key, p_delivery_method: deliveryMethod })
-    setSubmitting(false)
-    if (rpcError) {
-      const msg = rpcError.message.includes('PRICE_CHANGED') ? 'Um ou mais preços mudaram. Atualize o catálogo e confira o carrinho novamente.' : rpcError.message
-      setError(msg); return
+    try {
+      const { data, error: rpcError } = await supabase.rpc('create_order_v2', {
+        p_store_id: store.id, p_items: payload, p_notes: notes.trim() || null,
+        p_idempotency_key: key, p_delivery_method: deliveryMethod,
+      })
+      if (rpcError) {
+        const message = rpcError.message
+        setError(message.includes('PRICE_CHANGED') ? 'Um ou mais preços mudaram. Atualize o catálogo e confira o carrinho novamente.'
+          : message.includes('BUSINESS_DETAILS_REQUIRED') ? 'Informe a razão social e o responsável em Minha conta.'
+          : message.includes('DELIVERY_ADDRESS_REQUIRED') ? 'Complete o endereço de entrega em Minha conta.'
+          : message.includes('PROFILE_INCOMPLETE') ? 'Complete seus dados de cadastro em Minha conta.'
+          : message)
+        return
+      }
+      const parsed = data as CreateOrderResult
+      // O relatório é sempre derivado dos snapshots oficiais, nunca do carrinho.
+      const [orderResponse, itemsResponse] = await Promise.all([
+        supabase.from('orders').select('*').eq('id',parsed.order_id).single(),
+        supabase.from('order_items').select('*').eq('order_id',parsed.order_id).order('id'),
+      ])
+      if (orderResponse.error || itemsResponse.error || !orderResponse.data || !itemsResponse.data?.length) {
+        setReport('')
+        setReportError('Pedido registrado, mas não foi possível consultar o relatório oficial. Abra o pedido no histórico para tentar novamente.')
+      } else {
+        setReport(buildOrderReport(orderResponse.data as Order,itemsResponse.data as OrderItem[]))
+        setReportError('')
+      }
+      setResult(parsed)
+      clear()
+    } catch {
+      setError('Não foi possível finalizar a solicitação. Consulte Meus pedidos antes de tentar novamente.')
+    } finally {
+      setSubmitting(false)
     }
-    const parsed = data as CreateOrderResult
-    setResult(parsed)
-    setReport(buildReport(parsed))
-    clear()
   }
 
   const whatsapp = result?.seller_whatsapp || settings.seller_whatsapp || ''
-  const whatsappUrl = whatsapp ? `https://wa.me/${whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(report)}` : ''
+  const whatsappUrl = whatsapp && report ? `https://wa.me/${whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(report)}` : ''
 
   if (!open) return null
   return <>
@@ -78,9 +83,10 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
         {result ? <div className="success-panel">
           <div className="success-icon">✓</div><h3>Pedido salvo com sucesso</h3>
           <p>Total oficial: <strong>{formatMoney(result.total)}</strong></p>
-          <pre className="order-report">{report}</pre>
+          {report ? <pre className="order-report">{report}</pre> : <div className="status error" role="status">{reportError || "Relatório ainda indisponível."}</div>}
+          <button className="secondary full" onClick={()=>{onClose();navigate(`/pedido/${result.order_id}`)}}>Abrir pedido e relatório</button>
           {whatsappUrl && <a className="primary whatsapp" href={whatsappUrl} target="_blank" rel="noreferrer">Abrir pedido no WhatsApp</a>}
-          <button className="secondary full" onClick={() => { setResult(null); setReport(''); setNotes(''); onClose() }}>Continuar no catálogo</button>
+          <button className="secondary full" onClick={() => { setResult(null); setReport(''); setReportError(''); setNotes(''); onClose() }}>Continuar no catálogo</button>
         </div> : items.length ? <>
           {items.map(({ product, qty }) => <div className="cart-line" key={product.sku}>
             <div><h4>{product.name}</h4><p>{product.store_product_code || product.sku} · {formatMoney(productPrice(product))} / {product.unit}</p></div>
