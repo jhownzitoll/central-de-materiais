@@ -4,6 +4,7 @@ import type { CreateOrderResult, Product, Store, StoreSettings } from '../../typ
 import { useCart } from '../../hooks/useCart'
 import { useAuth } from '../../hooks/useAuth'
 import { formatMoney } from '../../lib/money'
+import { hasCompleteCheckoutProfile } from '../../lib/customerDetails'
 import { hasSupabaseConfig, supabase } from '../../lib/supabase'
 
 export function CartDrawer({ open, onClose, products, store, settings }: { open: boolean, onClose: () => void, products: Product[], store: Store, settings: StoreSettings }) {
@@ -11,6 +12,7 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [notes, setNotes] = useState('')
+  const [deliveryMethod, setDeliveryMethod] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<CreateOrderResult | null>(null)
@@ -32,7 +34,12 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
       `Loja: ${store.name}`,
       `Cliente: ${customer}`,
       profile?.document ? `${profile.person_type}: ${profile.document}` : '',
+      profile?.legal_name ? `Razão social: ${profile.legal_name}` : '',
+      profile?.full_name ? `${profile.person_type==='CNPJ'?'Responsável':'Nome'}: ${profile.full_name}` : '',
       profile?.phone ? `Contato: ${profile.phone}` : '',
+      profile?.email ? `E-mail: ${profile.email}` : '',
+      `Modalidade: ${deliveryMethod==='DELIVERY'?'Entrega':'Retirada na loja'}`,
+      deliveryMethod==='DELIVERY' ? `Endereço: ${profile?.delivery_street || ''}, ${profile?.delivery_number || ''}${profile?.delivery_complement ? ' - '+profile.delivery_complement : ''} - ${profile?.delivery_district || ''}, ${profile?.delivery_city || ''}/${profile?.delivery_state || ''} - CEP ${profile?.delivery_postal_code || ''}` : '',
       '', itemLines, '', `TOTAL: ${formatMoney(order.total)}`,
       notes.trim() ? `Observações: ${notes.trim()}` : '',
     ].filter(Boolean).join('\n')
@@ -43,10 +50,11 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
     if (!user) { onClose(); navigate('/login?returnTo=/'); return }
     if (!hasSupabaseConfig || !supabase) { setError('O banco ainda precisa ser conectado para registrar pedidos.'); return }
     if (!items.length) return
+    if (!hasCompleteCheckoutProfile(profile,deliveryMethod)) { setError('Complete seu CPF/CNPJ, dados da empresa e endereço na página Minha conta antes de finalizar. Para retirada, o endereço não é obrigatório.'); return }
     setSubmitting(true)
     const key = crypto.randomUUID ? crypto.randomUUID() : `order-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const payload = items.map((item) => ({ offer_id: item.product.offer_id, sku: item.product.sku, qty: item.qty, expected_price: productPrice(item.product) }))
-    const { data, error: rpcError } = await supabase.rpc('create_order', { p_store_id: store.id, p_items: payload, p_notes: notes.trim() || null, p_idempotency_key: key })
+    const { data, error: rpcError } = await supabase.rpc('create_order_v2', { p_store_id: store.id, p_items: payload, p_notes: notes.trim() || null, p_idempotency_key: key, p_delivery_method: deliveryMethod })
     setSubmitting(false)
     if (rpcError) {
       const msg = rpcError.message.includes('PRICE_CHANGED') ? 'Um ou mais preços mudaram. Atualize o catálogo e confira o carrinho novamente.' : rpcError.message
@@ -79,6 +87,13 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
             <strong>{formatMoney(productPrice(product) * qty)}</strong>
             <div></div><div className="stepper"><button onClick={() => setQuantity(product.sku, qty - 1)}>−</button><output>{qty}</output><button className="plus" onClick={() => setQuantity(product.sku, qty + 1)}>+</button></div>
           </div>)}
+          <div className="delivery-choice" role="group" aria-label="Como deseja receber o pedido?">
+            <h4>Como deseja receber?</h4>
+            <label><input type="radio" name="deliveryMethod" value="DELIVERY" checked={deliveryMethod==='DELIVERY'} onChange={()=>setDeliveryMethod('DELIVERY')}/> Entrega no endereço cadastrado</label>
+            <label><input type="radio" name="deliveryMethod" value="PICKUP" checked={deliveryMethod==='PICKUP'} onChange={()=>setDeliveryMethod('PICKUP')}/> Retirada na loja</label>
+          </div>
+          {deliveryMethod==='DELIVERY' && <p className="delivery-summary">{profile?.delivery_street ? `${profile.delivery_street}, ${profile.delivery_number||'S/N'} · ${profile.delivery_district||''} · ${profile.delivery_city||''}/${profile.delivery_state||''} · CEP ${profile.delivery_postal_code||''}` : 'Nenhum endereço informado.'}</p>}
+          {user && !hasCompleteCheckoutProfile(profile,deliveryMethod) && <button className="secondary full" type="button" onClick={()=>{onClose();navigate('/conta')}}>Completar cadastro e endereço</button>}
           <label className="form-field"><span>Observações (opcional)</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} placeholder="Ex.: separar material para retirada amanhã." /></label>
           {error && <div className="status error">{error}</div>}
         </> : <div className="empty-state"><h3>Seu carrinho está vazio</h3><p>Adicione produtos pelo catálogo.</p></div>}
