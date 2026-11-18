@@ -1,7 +1,47 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, hasSupabaseConfig } from '../lib/supabase'
-import { digits, formatCpfCnpj, formatPhone, isValidCnpj, isValidCpf } from '../lib/validation'
 import { siteUrl } from '../lib/site'
-import type { PersonType } from '../types'
-export function SignupPage(){const[personType,setPersonType]=useState<PersonType>('CNPJ');const[document,setDocument]=useState('');const[name,setName]=useState('');const[phone,setPhone]=useState('');const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[message,setMessage]=useState('');const[busy,setBusy]=useState(false);const navigate=useNavigate();const submit=async(e:React.FormEvent)=>{e.preventDefault();setMessage('');const normalizedDocument=digits(document);if(personType==='CPF'?!isValidCpf(normalizedDocument):!isValidCnpj(normalizedDocument)){setMessage(`${personType} inválido.`);return}if(name.trim().length<3){setMessage(personType==='CPF'?'Informe seu nome completo.':'Informe o nome fantasia da empresa.');return}if(digits(phone).length<10){setMessage('Informe um WhatsApp com DDD válido.');return}if(password.length<8){setMessage('Use uma senha com pelo menos 8 caracteres.');return}if(!supabase||!hasSupabaseConfig){setMessage('O cadastro será ativado assim que o projeto Supabase for conectado.');return}setBusy(true);const{error}=await supabase.auth.signUp({email:email.trim(),password,options:{emailRedirectTo:`${siteUrl()}/confirmar-email`,data:{person_type:personType,document:normalizedDocument,full_name:personType==='CPF'?name.trim():null,trade_name:personType==='CNPJ'?name.trim():null,phone:digits(phone)}}});setBusy(false);if(error){setMessage(error.message);return}const normalizedEmail=email.trim().toLowerCase();try{sessionStorage.setItem('central-materiais:pending-email',normalizedEmail)}catch{}navigate('/confirmar-email',{state:{email:normalizedEmail}})};return <div className="auth-page"><section className="auth-card wide"><div className="auth-brand"><span className="brand-mark">CM</span><div><h1>Criar conta</h1><p>Cadastre-se para enviar pedidos à loja.</p></div></div><form onSubmit={submit}><div className="segmented"><button type="button" className={personType==='CNPJ'?'active':''} onClick={()=>{setPersonType('CNPJ');setDocument('');setName('')}}>CNPJ</button><button type="button" className={personType==='CPF'?'active':''} onClick={()=>{setPersonType('CPF');setDocument('');setName('')}}>CPF</button></div><label className="form-field"><span>{personType}</span><input value={document} onChange={(e)=>setDocument(formatCpfCnpj(e.target.value))} inputMode="numeric" required/></label><label className="form-field"><span>{personType==='CPF'?'Nome completo':'Nome fantasia da marcenaria/empresa'}</span><input value={name} onChange={(e)=>setName(e.target.value)} required maxLength={120}/></label><label className="form-field"><span>WhatsApp</span><input value={phone} onChange={(e)=>setPhone(formatPhone(e.target.value))} inputMode="tel" autoComplete="tel" required/></label><label className="form-field"><span>E-mail</span><input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} autoComplete="email" required/></label><label className="form-field"><span>Senha</span><input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} minLength={8} autoComplete="new-password" required/></label><p className="privacy-note">Os dados são usados somente para cadastro, atendimento e processamento dos pedidos.</p>{message&&<div className="status error">{message}</div>}<button className="primary" disabled={busy}>{busy?'Criando conta…':'Criar conta'}</button></form><div className="auth-links"><Link to="/login">Já tenho conta</Link></div></section></div>}
+import { CustomerDetailsFields } from '../components/common/CustomerDetailsFields'
+import { detailsPayload, emptyCustomerDetails, validateCustomerDetails, type CustomerDetails } from '../lib/customerDetails'
+
+export function SignupPage() {
+  const [details,setDetails] = useState<CustomerDetails>({ ...emptyCustomerDetails })
+  const [email,setEmail] = useState('')
+  const [password,setPassword] = useState('')
+  const [message,setMessage] = useState('')
+  const [busy,setBusy] = useState(false)
+  const navigate = useNavigate()
+  const change = (key: keyof CustomerDetails, value: string) => setDetails(previous=>({ ...previous, [key]:value }))
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setMessage('')
+    const invalid = validateCustomerDetails(details)
+    if (invalid) { setMessage(invalid); return }
+    if (password.length < 8) { setMessage('Use uma senha com pelo menos 8 caracteres.'); return }
+    if (!supabase || !hasSupabaseConfig) { setMessage('O cadastro ainda não está disponível.'); return }
+    const normalizedEmail = email.trim().toLowerCase()
+    setBusy(true)
+    const { error } = await supabase.auth.signUp({
+      email: normalizedEmail, password,
+      options: { emailRedirectTo: `${siteUrl()}/confirmar-email`, data: detailsPayload(details) },
+    })
+    setBusy(false)
+    if (error) { setMessage(error.message); return }
+    try { sessionStorage.setItem('central-materiais:pending-email',normalizedEmail) } catch {}
+    navigate('/confirmar-email',{ state: { email: normalizedEmail } })
+  }
+  return <div className="auth-page"><section className="auth-card wide">
+    <div className="auth-brand"><span className="brand-mark">CM</span><div><h1>Criar conta</h1><p>Cadastre sua marcenaria ou seus dados pessoais para enviar pedidos.</p></div></div>
+    <form onSubmit={submit}>
+      <CustomerDetailsFields value={details} onChange={change}/>
+      <h3 className="details-heading">Acesso à conta</h3>
+      <label className="form-field"><span>E-mail</span><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required maxLength={254}/></label>
+      <label className="form-field"><span>Senha</span><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="new-password" required/></label>
+      <p className="privacy-note">Utilizaremos seus dados para identificação, atendimento, entrega e registro de pedidos. O endereço será confirmado antes da compra.</p>
+      {message&&<div role="alert" className="status error">{message}</div>}
+      <button className="primary" disabled={busy}>{busy?'Criando conta…':'Criar conta'}</button>
+    </form>
+    <div className="auth-links"><Link to="/login">Já tenho conta</Link></div>
+  </section></div>
+}
