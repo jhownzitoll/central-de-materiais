@@ -21,8 +21,11 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { user, loading, canManageStores } = useAuth()
+  // Google foi configurado no Supabase; não bloqueie o OAuth quando o endpoint
+  // de configurações públicas estiver inacessível (por exemplo, HTTP 401).
+  // Facebook permanece dependente de ativação explícita.
   const [providerState, setProviderState] = useState<{ google: boolean; facebook: boolean }>({
-    google: import.meta.env.VITE_GOOGLE_OAUTH_ENABLED === 'true',
+    google: import.meta.env.VITE_GOOGLE_OAUTH_ENABLED !== 'false',
     facebook: import.meta.env.VITE_FACEBOOK_OAUTH_ENABLED === 'true',
   })
 
@@ -40,7 +43,7 @@ export function LoginPage() {
         if (!alive) return
         const external = settings?.external
         setProviderState({
-          google: import.meta.env.VITE_GOOGLE_OAUTH_ENABLED === 'true' || external?.google === true,
+          google: import.meta.env.VITE_GOOGLE_OAUTH_ENABLED !== 'false' || external?.google === true,
           facebook: import.meta.env.VITE_FACEBOOK_OAUTH_ENABLED === 'true' || external?.facebook === true,
         })
       })
