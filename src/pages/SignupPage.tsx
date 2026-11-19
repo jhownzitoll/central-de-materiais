@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, hasSupabaseConfig } from '../lib/supabase'
 import { siteUrl } from '../lib/site'
+import { BRAND_MARK } from '../lib/branding'
 import { CustomerDetailsFields } from '../components/common/CustomerDetailsFields'
 import { detailsPayload, emptyCustomerDetails, validateCustomerDetails, type CustomerDetails } from '../lib/customerDetails'
 
@@ -32,7 +33,7 @@ export function SignupPage() {
     navigate('/confirmar-email',{ state: { email: normalizedEmail } })
   }
   return <div className="auth-page"><section className="auth-card wide">
-    <div className="auth-brand"><span className="brand-mark">CM</span><div><h1>Criar conta</h1><p>Cadastre sua marcenaria ou seus dados pessoais para enviar pedidos.</p></div></div>
+    <div className="auth-brand"><span className="brand-mark">{BRAND_MARK}</span><div><h1>Criar conta</h1><p>Cadastre sua marcenaria ou seus dados pessoais para enviar pedidos.</p></div></div>
     <form onSubmit={submit}>
       <CustomerDetailsFields value={details} onChange={change}/>
       <h3 className="details-heading">Acesso à conta</h3>
