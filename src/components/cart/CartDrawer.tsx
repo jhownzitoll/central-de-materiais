@@ -64,6 +64,8 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
       }
       setResult(parsed)
       clear()
+      // Envio imediato em melhor esforço; o pedido permanece salvo se a Meta falhar.
+      void supabase.functions.invoke('ibuild-whatsapp-dispatch', { body: { order_id: parsed.order_id } }).catch(() => {})
     } catch {
       setError('Não foi possível finalizar a solicitação. Consulte Meus pedidos antes de tentar novamente.')
     } finally {
@@ -71,8 +73,6 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
     }
   }
 
-  const whatsapp = result?.seller_whatsapp || settings.seller_whatsapp || ''
-  const whatsappUrl = whatsapp && report ? `https://wa.me/${whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(report)}` : ''
 
   if (!open) return null
   return <>
@@ -82,10 +82,10 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
       <div className="drawer-body">
         {result ? <div className="success-panel">
           <div className="success-icon">✓</div><h3>Pedido salvo com sucesso</h3>
-          <p>Total oficial: <strong>{formatMoney(result.total)}</strong></p>
+          <p>Total oficial: <strong>{formatMoney(result.total)}</strong></p><p>Solicitação recebida pela iBuild Materiais. Nossa central fará a conferência e entrará em contato para a continuidade.</p>
           {report ? <pre className="order-report">{report}</pre> : <div className="status error" role="status">{reportError || "Relatório ainda indisponível."}</div>}
           <button className="secondary full" onClick={()=>{onClose();navigate(`/pedido/${result.order_id}`)}}>Abrir pedido e relatório</button>
-          {whatsappUrl && <a className="primary whatsapp" href={whatsappUrl} target="_blank" rel="noreferrer">Abrir pedido no WhatsApp</a>}
+          
           <button className="secondary full" onClick={() => { setResult(null); setReport(''); setReportError(''); setNotes(''); onClose() }}>Continuar no catálogo</button>
         </div> : items.length ? <>
           {items.map(({ product, qty }) => <div className="cart-line" key={product.sku}>

@@ -17,6 +17,7 @@ import { AdminClientsPage } from './pages/admin/AdminClientsPage'
 import { AdminConfigPage } from './pages/admin/AdminConfigPage'
 import { AdminStoresPage } from './pages/admin/AdminStoresPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { AdminWhatsAppPage } from './pages/admin/AdminWhatsAppPage'
 
 export default function App() {
   return <BrowserRouter>
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="admin/produtos" element={<ProtectedRoute admin><AdminProductsPage /></ProtectedRoute>} />
           <Route path="admin/pedidos" element={<ProtectedRoute admin><AdminOrdersPage /></ProtectedRoute>} />
           <Route path="admin/clientes" element={<ProtectedRoute superAdmin><AdminClientsPage /></ProtectedRoute>} />
+          <Route path="admin/whatsapp" element={<ProtectedRoute superAdmin><AdminWhatsAppPage /></ProtectedRoute>} />
           <Route path="admin/config" element={<ProtectedRoute admin><AdminConfigPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
