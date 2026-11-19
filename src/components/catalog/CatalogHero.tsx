@@ -3,6 +3,6 @@ export function CatalogHero() {
     <div className="hero-eyebrow">Catálogo digital · Pedido rápido</div>
     <h1>Materiais para transformar seus projetos em realidade.</h1>
     <p>Consulte preços, encontre o produto pelo SKU e monte o pedido da sua marcenaria pelo celular.</p>
-    <div className="hero-meta"><span>✓ preços visíveis</span><span>✓ pedido organizado</span><span>✓ atendimento pelo vendedor</span></div>
+    <div className="hero-meta"><span>✓ preços visíveis</span><span>✓ pedido organizado</span><span>✓ intermediação iBuild Materiais</span></div>
   </section>
 }

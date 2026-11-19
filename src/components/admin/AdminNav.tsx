@@ -7,7 +7,8 @@ export function AdminNav() {
     <NavLink end to="/admin">Visão geral</NavLink>
     {isSuperAdmin && <NavLink to="/admin/lojas">Lojas</NavLink>}
     <NavLink to="/admin/produtos">Produtos e preços</NavLink>
-    <NavLink to="/admin/pedidos">Pedidos</NavLink>
+    <NavLink to="/admin/pedidos">{isSuperAdmin?'Central de pedidos':'Pedidos'}</NavLink>
+    {isSuperAdmin && <NavLink to="/admin/whatsapp">WhatsApp</NavLink>}
     {isSuperAdmin && <NavLink to="/admin/clientes">Clientes</NavLink>}
     <NavLink to="/admin/config">Configurações</NavLink>
   </nav>

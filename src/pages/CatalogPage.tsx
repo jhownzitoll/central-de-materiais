@@ -10,7 +10,7 @@ import { formatMoney } from '../lib/money'
 import { priceWithPlatformFee, DEFAULT_PLATFORM_FEE_BPS } from '../lib/platformFee'
 
 const demoStore: Store = { id: 'demo-casa-do-mdf', slug: 'casa-do-mdf', name: 'Casa do MDF', legal_name: null, cnpj: null, email: null, phone: null, description: null, logo_key: null, logo_url: null, active: true, featured: true, display_order: 1 }
-const demoSettings: StoreSettings = { store_id: demoStore.id, subtitle: 'Materiais para marcenaria', seller_name: 'Vendedor principal', seller_whatsapp: '5547920032476', seller_email: null, price_notice: 'Preços publicados pela Casa do MDF e sujeitos à confirmação comercial.', order_instructions: null, pickup_info: null, delivery_info: null }
+const demoSettings: StoreSettings = { store_id: demoStore.id, subtitle: 'Materiais para marcenaria', seller_name: 'Vendedor principal', seller_whatsapp: '', seller_email: null, price_notice: 'Preços publicados pela Casa do MDF e sujeitos à confirmação comercial.', order_instructions: null, pickup_info: null, delivery_info: null }
 function normalize(value: string) { return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() }
 
 export function CatalogPage() {
@@ -22,7 +22,7 @@ export function CatalogPage() {
     if (configResult.error || !configResult.data?.default_store_id) { setError('A loja principal ainda não foi configurada.'); setLoading(false); return }
     const storeId = configResult.data.default_store_id as string
     const [storeResult, settingsResult, catResult, prodResult, offerResult] = await Promise.all([
-      supabase.from('stores').select('*').eq('id', storeId).maybeSingle(), supabase.from('store_settings').select('*').eq('store_id', storeId).maybeSingle(), supabase.from('categories').select('*').eq('active', true).order('display_order'), supabase.from('products').select('*, categories(name)').eq('status', 'ACTIVE').order('display_order'), supabase.from('store_offers').select('*').eq('store_id', storeId).eq('active', true),
+      supabase.from('stores').select('*').eq('id', storeId).maybeSingle(), supabase.from('ibuild_catalog_settings').select('*').eq('store_id', storeId).maybeSingle(), supabase.from('categories').select('*').eq('active', true).order('display_order'), supabase.from('products').select('*, categories(name)').eq('status', 'ACTIVE').order('display_order'), supabase.from('store_offers').select('*').eq('store_id', storeId).eq('active', true),
     ])
     if (storeResult.error || catResult.error || prodResult.error || offerResult.error || !storeResult.data) { setError('Não foi possível carregar o catálogo agora. Tente novamente.'); setLoading(false); return }
     const platformFeeBps = Number(configResult.data.platform_fee_bps ?? DEFAULT_PLATFORM_FEE_BPS)
