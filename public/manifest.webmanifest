@@ -1,6 +1,6 @@
 {
-  "name": "Central de Materiais",
-  "short_name": "Materiais",
+  "name": "iBuild Materiais",
+  "short_name": "iBuild Materiais",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F7F8F6",

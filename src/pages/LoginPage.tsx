@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, hasSupabaseConfig } from '../lib/supabase'
 import { siteUrl } from '../lib/site'
 import { useAuth } from '../hooks/useAuth'
+import { BRAND_MARK } from '../lib/branding'
 
 type SocialProvider = 'google' | 'facebook'
 
@@ -102,7 +103,7 @@ export function LoginPage() {
 
   return <div className="auth-page">
     <section className="auth-card">
-      <div className="auth-brand"><span className="brand-mark">CM</span><div><h1>Entrar</h1><p>Acesse sua conta para enviar pedidos ou administrar a loja.</p></div></div>
+      <div className="auth-brand"><span className="brand-mark">{BRAND_MARK}</span><div><h1>Entrar</h1><p>Acesse sua conta para enviar pedidos ou administrar a loja.</p></div></div>
       <form onSubmit={submit}>
         <label className="form-field"><span>E-mail</span><input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" inputMode="email" required /></label>
         <label className="form-field"><span>Senha</span><span className="password-entry"><input type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required /><button type="button" className="password-toggle" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} aria-pressed={showPassword} onClick={() => setShowPassword(v => !v)}><VisibilityIcon visible={showPassword} /></button></span></label>

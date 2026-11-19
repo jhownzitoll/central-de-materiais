@@ -1,5 +1,6 @@
 import type { Order, OrderItem } from '../types'
 import { formatMoney } from './money'
+import { BRAND_COMMERCIAL_NAME } from './branding'
 
 function clean(value: unknown, fallback = '-') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -23,7 +24,7 @@ export function buildOrderReport(order: Order, items: OrderItem[]): string {
   }).format(date)
 
   const lines = [
-    'CENTRAL DE MATERIAIS — RELATÓRIO DE PEDIDO',
+    `${BRAND_COMMERCIAL_NAME.toLocaleUpperCase('pt-BR')} — RELATÓRIO DE PEDIDO`,
     `Pedido: ${order.public_number}`,
     `Data: ${formattedDate}`,
     `Status: ${order.status}`,

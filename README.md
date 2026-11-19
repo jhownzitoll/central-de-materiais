@@ -1,4 +1,4 @@
-# Central de Materiais — R4 MultiLoja
+# iBuild Materiais — Plataforma iBuild (R4 MultiLoja)
 
 Plataforma B2B de materiais para marcenaria, preparada para operar como catálogo multi-loja. A Casa do MDF é a primeira loja cadastrada e fornece os preços principais exibidos nesta versão.
 
