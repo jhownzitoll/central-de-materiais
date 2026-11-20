@@ -24,7 +24,7 @@ export function AccountPage() {
     if(!supabase){setLoading(false);return}
     const load=async()=>{
       const [o,g,l]=await Promise.all([
-        supabase!.from('orders').select('*').order('created_at',{ascending:false}),
+        supabase!.rpc('ibuild_customer_orders_v1'),
         supabase!.from('order_groups').select('*').order('created_at',{ascending:false}),
         supabase!.from('order_group_orders').select('order_id'),
       ])
