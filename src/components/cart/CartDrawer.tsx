@@ -20,6 +20,7 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
   const [result, setResult] = useState<CreateOrderResult | null>(null)
   const [report, setReport] = useState('')
   const [reportError, setReportError] = useState('')
+  const [sellerWhatsApp, setSellerWhatsApp] = useState('')
 
   const items = useMemo(() => lines.map((line) => ({ ...line, product: products.find((p) => p.sku === line.sku) })).filter((x): x is typeof x & { product: Product } => Boolean(x.product)), [lines, products])
   const productPrice = (p: Product) => p.effective_price ?? p.promotional_price ?? p.price
@@ -62,6 +63,7 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
         setReport(buildOrderReport(orderResponse.data as Order,itemsResponse.data as OrderItem[]))
         setReportError('')
       }
+      setSellerWhatsApp(typeof parsed.seller_whatsapp === 'string' ? parsed.seller_whatsapp.replace(/\D/g, '') : '')
       setResult(parsed)
       clear()
       // Envio imediato em melhor esforço; o pedido permanece salvo se a Meta falhar.
@@ -84,9 +86,10 @@ export function CartDrawer({ open, onClose, products, store, settings }: { open:
           <div className="success-icon">✓</div><h3>Pedido salvo com sucesso</h3>
           <p>Total oficial: <strong>{formatMoney(result.total)}</strong></p><p>Solicitação recebida pela iBuild Materiais. Nossa central fará a conferência e entrará em contato para a continuidade.</p>
           {report ? <pre className="order-report">{report}</pre> : <div className="status error" role="status">{reportError || "Relatório ainda indisponível."}</div>}
+          {report && /^\d{11,15}$/.test(sellerWhatsApp) && <a className="primary full" style={{display:'block',textAlign:'center',textDecoration:'none',padding:'14px',borderRadius:'10px'}} href={`https://wa.me/${sellerWhatsApp}?text=${encodeURIComponent(report)}`} target="_blank" rel="noopener noreferrer">Enviar pedido pelo WhatsApp</a>}
           <button className="secondary full" onClick={()=>{onClose();navigate(`/pedido/${result.order_id}`)}}>Abrir pedido e relatório</button>
           
-          <button className="secondary full" onClick={() => { setResult(null); setReport(''); setReportError(''); setNotes(''); onClose() }}>Continuar no catálogo</button>
+          <button className="secondary full" onClick={() => { setResult(null); setReport(''); setReportError(''); setSellerWhatsApp(''); setNotes(''); onClose() }}>Continuar no catálogo</button>
         </div> : items.length ? <>
           {items.map(({ product, qty }) => <div className="cart-line" key={product.sku}>
             <div><h4>{product.name}</h4><p>{product.store_product_code || product.sku} · {formatMoney(productPrice(product))} / {product.unit}</p></div>
