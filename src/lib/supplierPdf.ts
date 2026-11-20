@@ -74,7 +74,7 @@ export async function createSupplierPdfFile(order: Order, items: OrderItem[]): P
   const buyer = order.customer_snapshot || {}
   const buyerName = display(buyer.trade_name || buyer.full_name)
   const receiving = order.delivery_method === 'PICKUP' ? 'Retirada na loja' : 'Entrega'
-  let page: PDFPage
+  let page: PDFPage = pdf.addPage([WIDTH, HEIGHT])
   let y = 0
   const minY = 75
   const drawText = (text: unknown, x: number, atY: number, size = 10, useBold = false,
@@ -86,7 +86,7 @@ export async function createSupplierPdfFile(order: Order, items: OrderItem[]): P
     page.drawText(value, { x: px, y: atY, size, font: usedFont, color })
   }
   const header = (continued = false) => {
-    page = pdf.addPage([WIDTH, HEIGHT])
+    if (continued) page = pdf.addPage([WIDTH, HEIGHT])
     page.drawRectangle({ x: 0, y: HEIGHT - 117, width: WIDTH, height: 117, color: DARK })
     page.drawRectangle({ x: 0, y: HEIGHT - 121, width: WIDTH, height: 4, color: TEAL })
     drawText('iBUILD MATERIAIS', LEFT, HEIGHT - 47, 18, true, rgb(1, 1, 1))
