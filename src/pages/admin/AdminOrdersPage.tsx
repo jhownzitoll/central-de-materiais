@@ -263,7 +263,7 @@ export function AdminOrdersPage(){
           onClick={()=>selected&&sharePdf(supplierPdfs[selected.id])}>Compartilhar PDF no celular</button>}
       </div>}
       {pdfNotice&&<div className="status" role="status">{pdfNotice}</div>}
-      {pdfError&&<div className="status error" role="alert">{pdfError}</div>
+      {pdfError&&<div className="status error" role="alert">{pdfError}</div>}
       {isSuperAdmin&&r&&selected.status!=='CANCELADO'&&<>
        <h3>Conferência do intermediário</h3>
        <label className="form-field"><span>Observação interna (opcional)</span><textarea maxLength={500} value={note} onChange={e=>setNote(e.target.value)}/></label>
