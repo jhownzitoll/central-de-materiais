@@ -10,6 +10,7 @@ import { hasSupabaseConfig, supabase } from '../../lib/supabase'
 
 type CartItem = { sku: string; qty: number; product: Product }
 const newKey = () => crypto.randomUUID()
+const KEY_STORAGE = 'ibuild-checkout-request:v1'
 
 export function CartDrawer({ open, onClose, products, store }: {
   open: boolean; onClose: () => void; products: Product[]; store: Store; settings: StoreSettings
@@ -25,11 +26,32 @@ export function CartDrawer({ open, onClose, products, store }: {
   const [report, setReport] = useState('')
   const [reportError, setReportError] = useState('')
   const checkoutKey = useRef(newKey())
-  useEffect(() => { checkoutKey.current = newKey() }, [lines,notes,deliveryMethod])
+  useEffect(() => {
+    const signature=JSON.stringify({lines:[...lines].sort((a,b)=>a.sku.localeCompare(b.sku)),notes:notes.trim(),deliveryMethod})
+    try {
+      const saved=JSON.parse(sessionStorage.getItem(KEY_STORAGE)||'null')
+      if(saved?.signature===signature && typeof saved.key==='string' && /^[0-9a-f-]{36}$/i.test(saved.key)){
+        checkoutKey.current=saved.key
+      }else{
+        checkoutKey.current=newKey()
+        sessionStorage.setItem(KEY_STORAGE,JSON.stringify({signature,key:checkoutKey.current}))
+      }
+    }catch{checkoutKey.current=newKey()}
+  }, [lines,notes,deliveryMethod])
 
   const items = useMemo<CartItem[]>(() => lines.map(line => ({
     ...line, product: products.find(p => p.offer_id === line.sku || p.sku === line.sku),
   })).filter((x): x is CartItem => Boolean(x.product)), [lines,products])
+  const groupedItems=useMemo(()=>{
+    const map=new Map<string,CartItem[]>()
+    for(const item of items){
+      const key=item.product.store_id||store.id
+      map.set(key,[...(map.get(key)||[]),item])
+    }
+    return Array.from(map.entries()).map(([id,products])=>({
+      id,name:products[0].product.store_name||store.name,products,
+    }))
+  },[items,store.id,store.name])
   const incompleteCart = items.length !== lines.length
   const priceOf = (p: Product) => p.effective_price ?? p.promotional_price ?? p.price
   const total = items.reduce((v,i)=>v+i.qty*priceOf(i.product),0)
@@ -82,6 +104,7 @@ export function CartDrawer({ open, onClose, products, store }: {
         setReportError('')
       }
       setResult(parsed)
+      try{sessionStorage.removeItem(KEY_STORAGE)}catch{}
       clear()
       checkoutKey.current=newKey()
       // A distribuição às lojas é exclusiva da central administrativa.
@@ -109,7 +132,9 @@ export function CartDrawer({ open, onClose, products, store }: {
             :<div className="status error" role="status">{reportError||'Comprovante indisponível neste momento.'}</div>}
           <button className="secondary full" onClick={()=>{onClose();navigate(`/pedido/grupo/${result.group_id}`)}}>Abrir pedido consolidado</button>
           <button className="secondary full" onClick={()=>{setResult(null);setReport('');setReportError('');setNotes('');onClose()}}>Continuar no catálogo</button>
-        </div>:items.length?<>{items.map(({product,qty})=>
+        </div>:items.length?<>{groupedItems.map(group=><section key={group.id} aria-label={`Loja ${group.name}`}>
+          <h3>{group.name}</h3>
+          {group.products.map(({product,qty})=>
           <div className="cart-line" key={product.offer_id||product.sku}>
             <div><h4>{product.name}</h4><p>{product.store_name||store.name} · {product.store_product_code||product.sku} · {formatMoney(priceOf(product))} / {product.unit}</p></div>
             <strong>{formatMoney(priceOf(product)*qty)}</strong>
@@ -119,6 +144,7 @@ export function CartDrawer({ open, onClose, products, store }: {
               <button className="plus" onClick={()=>setQuantity(product.offer_id||product.sku,qty+1)}>+</button>
             </div>
           </div>)}
+          </section>)}
           {incompleteCart&&<div className="status error">O carrinho contém produtos que não estão mais disponíveis. Atualize o catálogo.</div>}
           <div className="delivery-choice" role="group" aria-label="Como deseja receber o pedido?">
             <h4>Como deseja receber?</h4>
