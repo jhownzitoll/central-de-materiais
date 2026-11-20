@@ -10,6 +10,7 @@ import { ConfirmEmailPage } from './pages/ConfirmEmailPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { AccountPage } from './pages/AccountPage'
 import { OrderPage } from './pages/OrderPage'
+import { GroupOrderPage } from './pages/GroupOrderPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { AdminProductsPage } from './pages/admin/AdminProductsPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="confirmar-email" element={<ConfirmEmailPage />} />
           <Route path="recuperar-senha" element={<ResetPasswordPage />} />
           <Route path="conta" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+          <Route path="pedido/grupo/:id" element={<ProtectedRoute><GroupOrderPage /></ProtectedRoute>} />
           <Route path="pedido/:id" element={<ProtectedRoute><OrderPage /></ProtectedRoute>} />
           <Route path="admin" element={<ProtectedRoute admin><AdminDashboardPage /></ProtectedRoute>} />
           <Route path="admin/lojas" element={<ProtectedRoute superAdmin><AdminStoresPage /></ProtectedRoute>} />
