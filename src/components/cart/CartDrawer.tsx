@@ -66,17 +66,15 @@ export function CartDrawer({ open, onClose, products, store }: {
       }
       const parsed=data as CreateMultiOrderResult
       if(!parsed?.group_id || !parsed.orders?.length) throw new Error('INVALID_GROUP_RESPONSE')
-      const childIds=parsed.orders.map(o=>o.order_id)
-      const [ordersResponse,itemsResponse]=await Promise.all([
-        supabase.from('orders').select('*').in('id',childIds),
-        supabase.from('order_items').select('*').in('order_id',childIds).order('id'),
-      ])
-      if(ordersResponse.error || itemsResponse.error || !ordersResponse.data?.length || !itemsResponse.data?.length){
+      const detailResults=await Promise.all(parsed.orders.map(child=>
+        supabase.rpc('ibuild_customer_order_v1',{p_order_id:child.order_id})
+      ))
+      if(detailResults.some(r=>r.error || !r.data?.order || !r.data?.items?.length)){
         setReport('')
         setReportError('Pedido registrado. Consulte o comprovante em Meus pedidos.')
       } else {
-        const children=(ordersResponse.data as Order[]).map(order=>({
-          order,items:(itemsResponse.data as OrderItem[]).filter(i=>i.order_id===order.id),
+        const children=detailResults.map(r=>({
+          order:r.data.order as Order,items:r.data.items as OrderItem[],
         }))
         setReport(buildGroupReport({
           public_number:parsed.public_number,total:parsed.total,created_at:new Date().toISOString(),
