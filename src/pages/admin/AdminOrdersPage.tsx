@@ -137,7 +137,9 @@ export function AdminOrdersPage(){
  const supplier=selected&&items.length?buildSupplierReport(selected,items):''
  const visibleReport=isSuperAdmin?report:supplier
  const phone=selected?phones[selected.store_id]||'':''
- const forwardURL=phone&&supplier?'https://wa.me/'+phone+'?text='+encodeURIComponent(supplier):''
+ const validPhone=/^[1-9][0-9]{9,14}$/.test(phone)
+ const longMessage=encodeURIComponent(supplier).length>2500
+ const forwardURL=validPhone&&supplier?'https://wa.me/'+phone+(longMessage?'':'?text='+encodeURIComponent(supplier)):''
  return <div className="container admin-page">
   <div className="page-heading"><div><span className="eyebrow">iBuild · Intermediação</span><h1>{isSuperAdmin?'Central de pedidos':'Pedidos da loja'}</h1><p>{isSuperAdmin?'Receba, confira e libere um pedido por vez ao fornecedor correto.':'Consulte somente os pedidos liberados à sua loja.'}</p></div></div>
   <AdminNav/>
@@ -204,12 +206,13 @@ export function AdminOrdersPage(){
        <h3>Conferência do intermediário</h3>
        <label className="form-field"><span>Observação interna (opcional)</span><textarea maxLength={500} value={note} onChange={e=>setNote(e.target.value)}/></label>
        {r.state==='AGUARDANDO_CONFERENCIA'&&<div className="action-row"><button className="primary fit" disabled={busy||!report} onClick={()=>void act('APPROVE')}>Aprovar pedido</button><button className="secondary" disabled={busy} onClick={()=>void act('REJECT')}>Rejeitar</button></div>}
-       {r.state==='APROVADO'&&<button className="primary" disabled={busy||!phone} onClick={()=>void act('START_FORWARD')}>{phone?'Preparar envio à loja':'Cadastre o WhatsApp da loja'}</button>}
+       {r.state==='APROVADO'&&<button className="primary" disabled={busy||!validPhone} onClick={()=>void act('START_FORWARD')}>{validPhone?'Preparar envio à loja':'Cadastre um WhatsApp válido da loja'}</button>}
        {r.state==='ENCAMINHAMENTO_INICIADO'&&<div className="ops-forward">
         <p>Confira o destinatário e envie pelo seu WhatsApp. Abrir a conversa não registra envio.</p>
+        {longMessage&&<p className="status">Relatório extenso: use «Copiar relatório», abra o WhatsApp e cole a mensagem manualmente.</p>}
         <pre className="order-report">{supplier}</pre>
         <div className="action-row"><button className="secondary" onClick={()=>void navigator.clipboard.writeText(supplier)}>Copiar relatório</button>{forwardURL&&<a className="primary button-link whatsapp fit" href={forwardURL} target="_blank" rel="noopener noreferrer">Abrir WhatsApp da loja</a>}</div>
-        <button className="primary" disabled={busy||!phone} onClick={()=>void act('CONFIRM_FORWARD')}>Confirmar que enviei à loja</button>
+        <button className="primary" disabled={busy||!validPhone} onClick={()=>void act('CONFIRM_FORWARD')}>Confirmar que enviei à loja</button>
        </div>}
        {r.state==='ENCAMINHADO'&&<div className="status">Envio confirmado por você em {moment(r.forwarded_at)}.</div>}
        {r.state==='REJEITADO'&&<div className="status error">Pedido rejeitado.</div>}
