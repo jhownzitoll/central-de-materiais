@@ -5,11 +5,13 @@ import { supabase } from '../lib/supabase'
 import { formatMoney } from '../lib/money'
 import { CustomerDetailsFields } from '../components/common/CustomerDetailsFields'
 import { detailsFromProfile, detailsPayload, emptyCustomerDetails, validateCustomerDetails, type CustomerDetails } from '../lib/customerDetails'
-import type { Order } from '../types'
+import type { Order, OrderGroup } from '../types'
 
 export function AccountPage() {
   const { user, profile, refreshProfile } = useAuth()
   const [orders,setOrders] = useState<Order[]>([])
+  const [groups,setGroups] = useState<OrderGroup[]>([])
+  const [linkedIds,setLinkedIds] = useState<string[]>([])
   const [loading,setLoading] = useState(true)
   const [editing,setEditing] = useState(false)
   const [saving,setSaving] = useState(false)
@@ -20,9 +22,22 @@ export function AccountPage() {
   useEffect(()=>{ setDetails(detailsFromProfile(profile)) },[profile])
   useEffect(()=>{
     if(!supabase){setLoading(false);return}
-    supabase.from('orders').select('*').order('created_at',{ascending:false})
-      .then(({data})=>{setOrders((data||[]) as Order[]);setLoading(false)})
+    const load=async()=>{
+      const [o,g,l]=await Promise.all([
+        supabase!.from('orders').select('*').order('created_at',{ascending:false}),
+        supabase!.from('order_groups').select('*').order('created_at',{ascending:false}),
+        supabase!.from('order_group_orders').select('order_id'),
+      ])
+      setOrders((o.data||[]) as Order[])
+      if(!g.error&&!l.error){
+        setGroups((g.data||[]) as OrderGroup[])
+        setLinkedIds((l.data||[]).map(x=>x.order_id))
+      }
+      setLoading(false)
+    }
+    void load()
   },[])
+
   const change = (key: keyof CustomerDetails, value: string) => setDetails(prev=>({ ...prev,[key]:value }))
 
   const save = async (event: React.FormEvent) => {
@@ -77,8 +92,8 @@ export function AccountPage() {
     </section>}
     <section className="section-card">
       <div className="section-head"><h2>Meus pedidos</h2></div>
-      {loading?<p>Carregando…</p>:orders.length?<div className="table-wrap"><table><thead><tr><th>Pedido</th><th>Data</th><th>Status</th><th>Total</th><th></th></tr></thead>
-      <tbody>{orders.map(order=><tr key={order.id}><td>{order.public_number}</td><td>{new Date(order.created_at).toLocaleDateString('pt-BR')}</td><td><span className="status-pill">{order.status}</span></td><td>{formatMoney(order.total)}</td><td><Link to={`/pedido/${order.id}`}>Abrir</Link></td></tr>)}</tbody></table></div>
+      {loading?<p>Carregando…</p>:(orders.length||groups.length)?<div className="table-wrap"><table><thead><tr><th>Pedido</th><th>Data</th><th>Status</th><th>Total</th><th></th></tr></thead>
+      <tbody>{groups.map(group=><tr key={group.id}><td>{group.public_number} · consolidado</td><td>{new Date(group.created_at).toLocaleDateString('pt-BR')}</td><td>{'Múltiplas lojas'}</td><td>{formatMoney(group.total)}</td><td><Link to={`/pedido/grupo/${group.id}`}>Abrir</Link></td></tr>)}{orders.filter(order=>!linkedIds.includes(order.id)).map(order=><tr key={order.id}><td>{order.public_number}</td><td>{new Date(order.created_at).toLocaleDateString('pt-BR')}</td><td><span className="status-pill">{order.status}</span></td><td>{formatMoney(order.total)}</td><td><Link to={`/pedido/${order.id}`}>Abrir</Link></td></tr>)}</tbody></table></div>
       :<div className="empty-state"><h3>Nenhum pedido ainda</h3><p>Seu histórico aparecerá aqui.</p></div>}
     </section>
   </div>
