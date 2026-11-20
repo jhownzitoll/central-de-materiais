@@ -96,8 +96,9 @@ export function AdminOrdersPage(){
   setBusy(false)
  }
  const r=selected?routingMap.get(selected.id):undefined,n=selected?noticeMap.get(selected.id):undefined
- const report=selected&&items.length?buildOrderReport(selected,items):''
+ const report=selected&&items.length&&isSuperAdmin?buildOrderReport(selected,items):''
  const supplier=selected&&items.length?buildSupplierReport(selected,items):''
+ const visibleReport=isSuperAdmin?report:supplier
  const phone=selected?phones[selected.store_id]||'':''
  const forwardURL=phone&&supplier?'https://wa.me/'+phone+'?text='+encodeURIComponent(supplier):''
  return <div className="container admin-page">
@@ -128,7 +129,7 @@ export function AdminOrdersPage(){
       {isSuperAdmin&&n&&<div className="status">WhatsApp: {n.state.replaceAll('_',' ')}{n.last_error&&<p>{n.last_error}</p>}</div>}
       {message&&<div className="status" role="status">{message}</div>}
       {error&&<div className="status error" role="alert">{error}</div>}
-      <h3>Relatório oficial</h3><pre className="order-report">{report||'Carregando itens...'}</pre>
+      <h3>{isSuperAdmin?'Relatório administrativo — iBuild':'Relatório comercial — sua loja'}</h3><pre className="order-report">{visibleReport||'Carregando itens...'}</pre>
       {isSuperAdmin&&r&&selected.status!=='CANCELADO'&&<>
        <h3>Conferência do intermediário</h3>
        <label className="form-field"><span>Observação interna (opcional)</span><textarea maxLength={500} value={note} onChange={e=>setNote(e.target.value)}/></label>
@@ -144,7 +145,7 @@ export function AdminOrdersPage(){
        {r.state==='REJEITADO'&&<div className="status error">Pedido rejeitado.</div>}
       </>}
       {!isSuperAdmin&&<label className="form-field"><span>Atualizar status comercial</span><select disabled={busy} value={selected.status} onChange={e=>void updateStatus(e.target.value as OrderStatus)}>{orderStatuses.map(s=><option key={s}>{s}</option>)}</select></label>}
-      <div className="action-row"><button className="secondary" disabled={!report} onClick={()=>void navigator.clipboard.writeText(report)}>Copiar relatório</button></div>
+      <div className="action-row"><button className="secondary" disabled={!visibleReport} onClick={()=>void navigator.clipboard.writeText(visibleReport)}>Copiar relatório</button></div>
       {isSuperAdmin&&<><h3>Histórico</h3><div className="ops-timeline">{events.map(e=><div key={e.id}><strong>{e.kind.replaceAll('_',' ').toLowerCase()}</strong><small>{moment(e.created_at)} · {e.actor_kind}</small></div>)}{!events.length&&<p>Sem eventos adicionais.</p>}</div></>}
     </div>
    </section></div>}
