@@ -9,7 +9,7 @@ export function OrderPage(){const{id}=useParams();const[order,setOrder]=useState
   useEffect(()=>{
     if(!supabase||!id){setLoadError('O pedido não está disponível.');setLoading(false);return}
     let current=true
-    supabase.rpc('ibuild_customer_order_v1',{p_order_id:id}).then(({data,error:queryError})=>{
+    Promise.resolve(supabase.rpc('ibuild_customer_order_v1',{p_order_id:id})).then(({data,error:queryError})=>{
       if(!current)return
       if(queryError || !data?.order || !data?.items?.length){
         setLoadError('Pedido não encontrado ou sem permissão de acesso.');return
