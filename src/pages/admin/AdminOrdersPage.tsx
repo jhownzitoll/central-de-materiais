@@ -3,9 +3,10 @@ import { AdminNav } from '../../components/admin/AdminNav'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { buildOrderReport } from '../../lib/orderReport'
+import { buildGroupReport, type GroupOrderDetails } from '../../lib/groupReport'
 import { buildSupplierReport, routingLabel, type RoutingState } from '../../lib/routing'
 import { formatMoney } from '../../lib/money'
-import type { Order, OrderItem, OrderStatus } from '../../types'
+import type { Order, OrderGroup, OrderGroupLink, OrderItem, OrderStatus } from '../../types'
 type Routing={order_id:string;store_id:string;state:RoutingState;forwarded_at:string|null;opened_at:string|null}
 type Notice={id:string;order_id:string;state:string;last_error:string|null}
 type Event={id:number;kind:string;created_at:string;actor_kind:string}
@@ -14,6 +15,11 @@ const moment=(date?:string|null)=>date?new Date(date).toLocaleString('pt-BR'):'�
 export function AdminOrdersPage(){
  const {isSuperAdmin}=useAuth()
  const [orders,setOrders]=useState<Order[]>([])
+ const [groups,setGroups]=useState<OrderGroup[]>([])
+ const [links,setLinks]=useState<OrderGroupLink[]>([])
+ const [selectedGroup,setSelectedGroup]=useState<OrderGroup|null>(null)
+ const [groupDetails,setGroupDetails]=useState<GroupOrderDetails[]>([])
+ const [groupLoading,setGroupLoading]=useState(false)
  const [routes,setRoutes]=useState<Routing[]>([])
  const [notices,setNotices]=useState<Notice[]>([])
  const [phones,setPhones]=useState<Record<string,string>>({})
@@ -27,14 +33,18 @@ export function AdminOrdersPage(){
  const noticeMap=useMemo(()=>new Map(notices.map(x=>[x.order_id,x])),[notices])
  const refresh=async()=>{
    if(!supabase)return
-   const [o,r,n,s]=await Promise.all([
+   const [o,r,n,s,g,l]=await Promise.all([
      supabase.from('orders').select('*').order('created_at',{ascending:false}).limit(500),
      isSuperAdmin?supabase.from('ibuild_order_routing').select('*'):Promise.resolve({data:[],error:null}),
      isSuperAdmin?supabase.from('ibuild_notification_outbox').select('id,order_id,state,last_error'):Promise.resolve({data:[],error:null}),
      isSuperAdmin?supabase.from('store_settings').select('store_id,seller_whatsapp'):Promise.resolve({data:[],error:null}),
+     isSuperAdmin?supabase.from('order_groups').select('*').order('created_at',{ascending:false}).limit(250):Promise.resolve({data:[],error:null}),
+     isSuperAdmin?supabase.from('order_group_orders').select('*'):Promise.resolve({data:[],error:null}),
    ])
-   if(o.error||r.error||n.error||s.error){setError('Não foi possível consultar todos os pedidos e estados.');return}
+   if(o.error||r.error||n.error||s.error||g.error||l.error){setError('Não foi possível consultar todos os pedidos e estados.');return}
    setOrders((o.data||[]) as Order[])
+   setGroups((g.data||[]) as OrderGroup[])
+   setLinks((l.data||[]) as OrderGroupLink[])
    setRoutes((r.data||[]) as Routing[])
    setNotices((n.data||[]) as Notice[])
    setPhones(Object.fromEntries((s.data||[]).map(v=>[v.store_id,String(v.seller_whatsapp||'').replace(/\D/g,'')])))
@@ -58,7 +68,34 @@ export function AdminOrdersPage(){
    (filter==='fail'&&['FALHA_TEMPORARIA','FALHA_PERMANENTE','RESULTADO_INCERTO'].includes(noticeMap.get(o.id)?.state||''))||
    (filter==='cancelled'&&o.status==='CANCELADO')
  }),[orders,filter,query,isSuperAdmin,routingMap,noticeMap])
+ const linkedOrderIds=useMemo(()=>new Set(links.map(l=>l.order_id)),[links])
+ const visibleGroups=useMemo(()=>groups.filter(g=>{
+   const children=links.filter(l=>l.group_id===g.id).map(l=>orders.find(o=>o.id===l.order_id)).filter((o):o is Order=>Boolean(o))
+   if (!children.length) return false
+   const q=query.trim().toLowerCase()
+   const searchable=[g.public_number,...children.flatMap(o=>[o.public_number,String(o.customer_snapshot?.trade_name||o.customer_snapshot?.full_name||''),String(o.store_snapshot?.store_name||'')])].join(' ').toLowerCase()
+   if(q&&!searchable.includes(q))return false
+   if(filter==='all')return true
+   if(filter==='cancelled')return children.every(o=>o.status==='CANCELADO')
+   if(filter==='fail')return children.some(o=>['FALHA_TEMPORARIA','FALHA_PERMANENTE','RESULTADO_INCERTO'].includes(noticeMap.get(o.id)?.state||''))
+   if(filter==='pending')return children.some(o=>routingMap.get(o.id)?.state==='AGUARDANDO_CONFERENCIA')
+   if(filter==='ready')return children.some(o=>['APROVADO','ENCAMINHAMENTO_INICIADO'].includes(routingMap.get(o.id)?.state||''))
+   if(filter==='sent')return children.every(o=>routingMap.get(o.id)?.state==='ENCAMINHADO')
+   return true
+ }),[groups,links,orders,query,filter,routingMap,noticeMap])
+ const openGroup=async(g:OrderGroup)=>{
+   if(!supabase)return
+   setSelectedGroup(g);setGroupDetails([]);setGroupLoading(true);setError('')
+   const ids=links.filter(l=>l.group_id===g.id).map(l=>l.order_id)
+   const children=orders.filter(o=>ids.includes(o.id))
+   if(children.length!==ids.length){setError('Nem todos os subpedidos estão disponíveis nesta página.');setGroupLoading(false);return}
+   const {data,error:e}=await supabase.from('order_items').select('*').in('order_id',ids).order('id')
+   if(e){setError('Falha ao carregar os itens consolidados.');setGroupLoading(false);return}
+   setGroupDetails(children.map(order=>({order,items:((data||[]) as OrderItem[]).filter(i=>i.order_id===order.id)})))
+   setGroupLoading(false)
+ }
  const open=async(o:Order)=>{
+  setSelectedGroup(null)
   if(!supabase)return
   setSelected(o);setItems([]);setEvents([]);setMessage('');setError('');setNote('')
   const [i,e]=await Promise.all([
@@ -111,7 +148,16 @@ export function AdminOrdersPage(){
     {isSuperAdmin?<><option value="pending">Aguardando conferência</option><option value="ready">Para encaminhar</option><option value="sent">Encaminhados</option><option value="fail">Falhas de notificação</option><option value="cancelled">Cancelados</option><option value="all">Todos</option></>:<><option value="all">Todos</option>{orderStatuses.map(s=><option key={s} value={s}>{s}</option>)}</>}
    </select><button className="secondary" onClick={()=>void refresh()}>Atualizar</button></div>
    {error&&!selected&&<div className="status error">{error}</div>}
-   <div className="ops-order-list">{visible.map(o=>{
+   <div className="ops-order-list">{isSuperAdmin&&visibleGroups.map(g=>{
+     const childOrders=links.filter(l=>l.group_id===g.id).map(l=>orders.find(o=>o.id===l.order_id)).filter((o):o is Order=>Boolean(o))
+     const pending=childOrders.filter(o=>routingMap.get(o.id)?.state!=='ENCAMINHADO').length
+     return <button key={g.id} className="ops-order-card" onClick={()=>void openGroup(g)}>
+       <span><strong>{g.public_number}</strong><small>{moment(g.created_at)} · consolidado</small></span>
+       <span><strong>{String(childOrders[0]?.customer_snapshot?.trade_name||childOrders[0]?.customer_snapshot?.full_name||'Cliente')}</strong><small>{childOrders.length} fornecedor(es)</small></span>
+       <span className="ops-order-value">{formatMoney(g.total)}<small>{pending} loja(s) não encaminhadas</small></span>
+       <span className="ops-chevron">Conferir →</span>
+     </button>
+   })}{visible.filter(o=>!isSuperAdmin||!linkedOrderIds.has(o.id)).map(o=>{
     const c=o.customer_snapshot||{},s=o.store_snapshot||{},rt=routingMap.get(o.id),notice=noticeMap.get(o.id)
     return <button key={o.id} className="ops-order-card" onClick={()=>void open(o)}>
       <span><strong>{o.public_number}</strong><small>{moment(o.created_at)}</small></span>
@@ -120,8 +166,32 @@ export function AdminOrdersPage(){
       {isSuperAdmin&&<span className="ops-notice">{notice?.state?.replaceAll('_',' ')||'—'}</span>}
       <span className="ops-chevron">Abrir →</span>
     </button>})}
-   {!visible.length&&<div className="empty-state"><h3>Sem pedidos neste filtro</h3><p>Novas solicitações aparecerão aqui.</p></div>}</div>
+   {!visible.filter(o=>!isSuperAdmin||!linkedOrderIds.has(o.id)).length&&!visibleGroups.length&&<div className="empty-state"><h3>Sem pedidos neste filtro</h3><p>Novas solicitações aparecerão aqui.</p></div>}</div>
   </section>
+  {isSuperAdmin&&selectedGroup&&<div className="modal-shell">
+    <button className="overlay open" aria-label="Fechar" onClick={()=>setSelectedGroup(null)}/>
+    <section className="edit-panel ops-panel">
+      <div className="drawer-head"><div><small>Pedido consolidado</small><h2>{selectedGroup.public_number}</h2></div>
+        <button className="close" onClick={()=>setSelectedGroup(null)}>×</button></div>
+      <div className="edit-form">
+        <p>{groupDetails.length} loja(s) · Total: <strong>{formatMoney(selectedGroup.total)}</strong></p>
+        {groupLoading?<p>Carregando fornecedores…</p>:<>
+          {groupDetails.map(({order,items})=><div className="section-card" key={order.id}>
+            <h3>{String(order.store_snapshot?.store_name||'Fornecedor')}</h3>
+            <p>{order.public_number} · {formatMoney(order.total)} · {routingLabel(routingMap.get(order.id)?.state)}</p>
+            <p>{items.length} item(ns)</p>
+            <button className="primary fit" onClick={()=>void open(order)}>Conferir ou encaminhar esta loja</button>
+          </div>)}
+          {groupDetails.length>0&&groupDetails.every(x=>x.items.length>0)&&<>
+            <h3>Relatório administrativo consolidado</h3>
+            <pre className="order-report">{buildGroupReport(selectedGroup,groupDetails,true)}</pre>
+            <button className="secondary" onClick={()=>void navigator.clipboard.writeText(buildGroupReport(selectedGroup,groupDetails,true))}>Copiar relatório consolidado</button>
+          </>}
+        </>}
+        {error&&<div className="status error">{error}</div>}
+      </div>
+    </section>
+  </div>}
   {selected&&<div className="modal-shell"><button className="overlay open" aria-label="Fechar" onClick={()=>setSelected(null)}/>
    <section className="edit-panel ops-panel"><div className="drawer-head"><div><small>{String(selected.store_snapshot?.store_name||'Fornecedor')}</small><h2>{selected.public_number}</h2></div><button className="close" onClick={()=>setSelected(null)}>×</button></div>
     <div className="edit-form">
