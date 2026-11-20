@@ -6,6 +6,7 @@ import { buildOrderReport } from '../../lib/orderReport'
 import { buildGroupReport, type GroupOrderDetails } from '../../lib/groupReport'
 import { buildSupplierReport, routingLabel, type RoutingState } from '../../lib/routing'
 import { formatMoney } from '../../lib/money'
+import { createSupplierPdfFile, downloadSupplierPdf, shareSupplierPdf } from '../../lib/supplierPdf'
 import type { Order, OrderGroup, OrderGroupLink, OrderItem, OrderStatus } from '../../types'
 type Routing={order_id:string;store_id:string;state:RoutingState;forwarded_at:string|null;opened_at:string|null}
 type Notice={id:string;order_id:string;state:string;last_error:string|null}
@@ -20,6 +21,9 @@ export function AdminOrdersPage(){
  const [selectedGroup,setSelectedGroup]=useState<OrderGroup|null>(null)
  const [groupDetails,setGroupDetails]=useState<GroupOrderDetails[]>([])
  const [groupLoading,setGroupLoading]=useState(false)
+ const [supplierPdfs,setSupplierPdfs]=useState<Record<string,File>>({})
+ const [pdfNotice,setPdfNotice]=useState('')
+ const [pdfError,setPdfError]=useState('')
  const [routes,setRoutes]=useState<Routing[]>([])
  const [notices,setNotices]=useState<Notice[]>([])
  const [phones,setPhones]=useState<Record<string,string>>({})
@@ -29,6 +33,41 @@ export function AdminOrdersPage(){
  const [events,setEvents]=useState<Event[]>([])
  const [note,setNote]=useState(''),[busy,setBusy]=useState(false)
  const [message,setMessage]=useState(''),[error,setError]=useState('')
+ useEffect(()=>{
+   let active=true
+   if(!selected || !items.length)return
+   void createSupplierPdfFile(selected,items).then(file=>{
+     if(active)setSupplierPdfs(previous=>({...previous,[selected.id]:file}))
+   }).catch(()=>{
+     if(active)setPdfError('Não foi possível gerar o PDF desta loja.')
+   })
+   return()=>{active=false}
+ },[selected?.id,items])
+ useEffect(()=>{
+   let active=true
+   if(!selectedGroup||!groupDetails.length)return
+   void Promise.all(groupDetails.map(async({order,items})=>({
+     id:order.id,file:await createSupplierPdfFile(order,items),
+   }))).then(ready=>{
+     if(active)setSupplierPdfs(previous=>({
+       ...previous,...Object.fromEntries(ready.map(pdf=>[pdf.id,pdf.file])),
+     }))
+   }).catch(()=>{
+     if(active)setPdfError('Não foi possível gerar todos os PDFs. Confira os itens dos subpedidos.')
+   })
+   return()=>{active=false}
+ },[selectedGroup?.id,groupDetails])
+ const downloadPdf=(file:File)=>{
+   downloadSupplierPdf(file)
+   setPdfNotice('PDF baixado. Encaminhe o documento para a loja correspondente.')
+ }
+ const sharePdf=(file:File)=>{
+   // Preserve transient user activation for navigator.share().
+   void shareSupplierPdf(file).then(outcome=>{
+     if(outcome==='downloaded')setPdfNotice('Compartilhamento de arquivos indisponível aqui. PDF baixado; anexe-o na conversa da loja.')
+     else if(outcome==='shared')setPdfNotice('Confira se a mensagem foi realmente enviada antes de confirmar o encaminhamento.')
+   }).catch(()=>setPdfError('Falha ao compartilhar o PDF. Use o botão de download.'))
+ }
  const routingMap=useMemo(()=>new Map(routes.map(x=>[x.order_id,x])),[routes])
  const noticeMap=useMemo(()=>new Map(notices.map(x=>[x.order_id,x])),[notices])
  const refresh=async()=>{
@@ -85,7 +124,7 @@ export function AdminOrdersPage(){
  }),[groups,links,orders,query,filter,routingMap,noticeMap])
  const openGroup=async(g:OrderGroup)=>{
    if(!supabase)return
-   setSelectedGroup(g);setGroupDetails([]);setGroupLoading(true);setError('')
+   setSelectedGroup(g);setGroupDetails([]);setGroupLoading(true);setError('');setPdfNotice('');setPdfError('')
    const ids=links.filter(l=>l.group_id===g.id).map(l=>l.order_id)
    const children=orders.filter(o=>ids.includes(o.id))
    if(children.length!==ids.length){setError('Nem todos os subpedidos estão disponíveis nesta página.');setGroupLoading(false);return}
@@ -97,7 +136,7 @@ export function AdminOrdersPage(){
  const open=async(o:Order)=>{
   setSelectedGroup(null)
   if(!supabase)return
-  setSelected(o);setItems([]);setEvents([]);setMessage('');setError('');setNote('')
+  setSelected(o);setItems([]);setEvents([]);setMessage('');setError('');setNote('');setPdfNotice('');setPdfError('')
   const [i,e]=await Promise.all([
    isSuperAdmin?supabase.from('order_items').select('*').eq('order_id',o.id).order('id'):supabase.rpc('ibuild_supplier_order_v1',{p_order_id:o.id}),
    isSuperAdmin?supabase.from('ibuild_order_events').select('id,kind,created_at,actor_kind').eq('order_id',o.id).order('created_at',{ascending:false}):Promise.resolve({data:[],error:null})
@@ -182,7 +221,16 @@ export function AdminOrdersPage(){
             <h3>{String(order.store_snapshot?.store_name||'Fornecedor')}</h3>
             <p>{order.public_number} · {formatMoney(order.total)} · {routingLabel(routingMap.get(order.id)?.state)}</p>
             <p>{items.length} item(ns)</p>
-            <button className="primary fit" onClick={()=>void open(order)}>Conferir ou encaminhar esta loja</button>
+            <div className="action-row">
+              <button className="secondary" disabled={!supplierPdfs[order.id]}
+                onClick={()=>downloadPdf(supplierPdfs[order.id])}>
+                {supplierPdfs[order.id]?'Baixar PDF da loja':'Preparando PDF…'}
+              </button>
+              <button className="secondary" disabled={!supplierPdfs[order.id]||routingMap.get(order.id)?.state!=='ENCAMINHAMENTO_INICIADO'}
+                title="Disponível após aprovar e preparar o encaminhamento"
+                onClick={()=>sharePdf(supplierPdfs[order.id])}>Compartilhar PDF</button>
+              <button className="primary fit" onClick={()=>void open(order)}>Conferir ou encaminhar esta loja</button>
+            </div>
           </div>)}
           {groupDetails.length>0&&groupDetails.every(x=>x.items.length>0)&&<>
             <h3>Relatório administrativo consolidado</h3>
@@ -190,6 +238,8 @@ export function AdminOrdersPage(){
             <button className="secondary" onClick={()=>void navigator.clipboard.writeText(buildGroupReport(selectedGroup,groupDetails,true))}>Copiar relatório consolidado</button>
           </>}
         </>}
+        {pdfNotice&&<div className="status" role="status">{pdfNotice}</div>}
+        {pdfError&&<div className="status error" role="alert">{pdfError}</div>}
         {error&&<div className="status error">{error}</div>}
       </div>
     </section>
@@ -202,13 +252,25 @@ export function AdminOrdersPage(){
       {message&&<div className="status" role="status">{message}</div>}
       {error&&<div className="status error" role="alert">{error}</div>}
       <h3>{isSuperAdmin?'Relatório administrativo — iBuild':'Relatório comercial — sua loja'}</h3><pre className="order-report">{visibleReport||'Carregando itens...'}</pre>
+      {items.length>0&&<div className="action-row">
+        <button className="secondary" disabled={!selected||!supplierPdfs[selected.id]}
+          onClick={()=>selected&&downloadPdf(supplierPdfs[selected.id])}>
+          {selected&&supplierPdfs[selected.id]?'Baixar pedido desta loja em PDF':'Preparando PDF…'}
+        </button>
+        {isSuperAdmin&&<button className="secondary"
+          disabled={!selected||!supplierPdfs[selected.id]||r?.state!=='ENCAMINHAMENTO_INICIADO'}
+          title="Disponível após aprovação e preparação do encaminhamento"
+          onClick={()=>selected&&sharePdf(supplierPdfs[selected.id])}>Compartilhar PDF no celular</button>}
+      </div>}
+      {pdfNotice&&<div className="status" role="status">{pdfNotice}</div>}
+      {pdfError&&<div className="status error" role="alert">{pdfError}</div>
       {isSuperAdmin&&r&&selected.status!=='CANCELADO'&&<>
        <h3>Conferência do intermediário</h3>
        <label className="form-field"><span>Observação interna (opcional)</span><textarea maxLength={500} value={note} onChange={e=>setNote(e.target.value)}/></label>
        {r.state==='AGUARDANDO_CONFERENCIA'&&<div className="action-row"><button className="primary fit" disabled={busy||!report} onClick={()=>void act('APPROVE')}>Aprovar pedido</button><button className="secondary" disabled={busy} onClick={()=>void act('REJECT')}>Rejeitar</button></div>}
        {r.state==='APROVADO'&&<button className="primary" disabled={busy||!validPhone} onClick={()=>void act('START_FORWARD')}>{validPhone?'Preparar envio à loja':'Cadastre um WhatsApp válido da loja'}</button>}
        {r.state==='ENCAMINHAMENTO_INICIADO'&&<div className="ops-forward">
-        <p>Confira o destinatário e envie pelo seu WhatsApp. Abrir a conversa não registra envio.</p>
+        <p>Compartilhe o PDF no celular (escolhendo o contato da loja) ou baixe-o e anexe manualmente no WhatsApp. Abrir a conversa não registra envio.</p>
         {longMessage&&<p className="status">Relatório extenso: use «Copiar relatório», abra o WhatsApp e cole a mensagem manualmente.</p>}
         <pre className="order-report">{supplier}</pre>
         <div className="action-row"><button className="secondary" onClick={()=>void navigator.clipboard.writeText(supplier)}>Copiar relatório</button>{forwardURL&&<a className="primary button-link whatsapp fit" href={forwardURL} target="_blank" rel="noopener noreferrer">Abrir WhatsApp da loja</a>}</div>
