@@ -23,12 +23,13 @@ export function GroupOrderPage(){
         if(g.error||l.error||!g.data||!l.data?.length)throw new Error('Pedido não encontrado ou sem permissão.')
         const links=l.data as OrderGroupLink[]
         const ids=links.map(i=>i.order_id)
-        const [o,i]=await Promise.all([
-          supabase!.from('orders').select('*').in('id',ids),
-          supabase!.from('order_items').select('*').in('order_id',ids).order('id'),
-        ])
-        if(o.error||i.error||!o.data||!i.data)throw new Error('Não foi possível consultar os subpedidos.')
-        const children=(o.data as Order[]).map(order=>({order,items:(i.data as OrderItem[]).filter(item=>item.order_id===order.id)}))
+        const results=await Promise.all(ids.map(orderId=>
+          supabase!.rpc('ibuild_customer_order_v1',{p_order_id:orderId})
+        ))
+        if(results.some(r=>r.error || !r.data?.order || !r.data?.items))throw new Error('Não foi possível consultar os subpedidos.')
+        const children=results.map(r=>({
+          order:r.data.order as Order,items:r.data.items as OrderItem[],
+        }))
         if(children.length!==links.length||children.some(child=>!child.items.length))throw new Error('Subpedidos ainda não disponíveis.')
         if(alive){setGroup(g.data as OrderGroup);setChildren(children)}
       }catch(e){if(alive)setError(e instanceof Error?e.message:'Erro ao consultar pedido.')}
