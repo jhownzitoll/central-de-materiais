@@ -9,18 +9,15 @@ export function OrderPage(){const{id}=useParams();const[order,setOrder]=useState
   useEffect(()=>{
     if(!supabase||!id){setLoadError('O pedido não está disponível.');setLoading(false);return}
     let current=true
-    Promise.all([
-      supabase.from('orders').select('*').eq('id',id).maybeSingle(),
-      supabase.from('order_items').select('*').eq('order_id',id).order('id')
-    ]).then(([orderResponse,itemResponse])=>{
+    supabase.rpc('ibuild_customer_order_v1',{p_order_id:id}).then(({data,error:queryError})=>{
       if(!current)return
-      if(orderResponse.error||itemResponse.error){setLoadError('Não foi possível carregar o relatório oficial do pedido.');return}
-      if(!orderResponse.data){setLoadError('Pedido não encontrado ou sem permissão de acesso.');return}
-      if(!itemResponse.data?.length){setLoadError('Os itens do pedido não estão disponíveis.');return}
-      setOrder(orderResponse.data as Order)
-      setItems(itemResponse.data as OrderItem[])
+      if(queryError || !data?.order || !data?.items?.length){
+        setLoadError('Pedido não encontrado ou sem permissão de acesso.');return
+      }
+      setOrder(data.order as Order)
+      setItems(data.items as OrderItem[])
     }).catch(()=>{
-      if(current)setLoadError('Falha ao consultar o pedido. Tente novamente mais tarde.')
+      if(current)setLoadError('Falha ao consultar o pedido. Tente novamente.')
     }).finally(()=>{if(current)setLoading(false)})
     return ()=>{current=false}
   },[id])
