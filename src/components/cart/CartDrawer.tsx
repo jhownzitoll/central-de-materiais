@@ -67,7 +67,7 @@ export function CartDrawer({ open, onClose, products, store }: {
       const parsed=data as CreateMultiOrderResult
       if(!parsed?.group_id || !parsed.orders?.length) throw new Error('INVALID_GROUP_RESPONSE')
       const detailResults=await Promise.all(parsed.orders.map(child=>
-        supabase.rpc('ibuild_customer_order_v1',{p_order_id:child.order_id})
+        supabase!.rpc('ibuild_customer_order_v1',{p_order_id:child.order_id})
       ))
       if(detailResults.some(r=>r.error || !r.data?.order || !r.data?.items?.length)){
         setReport('')
