@@ -34,7 +34,7 @@ export function AdminOrdersPage(){
  const refresh=async()=>{
    if(!supabase)return
    const [o,r,n,s,g,l]=await Promise.all([
-     supabase.from('orders').select('*').order('created_at',{ascending:false}).limit(500),
+     isSuperAdmin?supabase.from('orders').select('*').order('created_at',{ascending:false}).limit(500):supabase.rpc('ibuild_supplier_orders_v1'),
      isSuperAdmin?supabase.from('ibuild_order_routing').select('*'):Promise.resolve({data:[],error:null}),
      isSuperAdmin?supabase.from('ibuild_notification_outbox').select('id,order_id,state,last_error'):Promise.resolve({data:[],error:null}),
      isSuperAdmin?supabase.from('store_settings').select('store_id,seller_whatsapp'):Promise.resolve({data:[],error:null}),
@@ -99,11 +99,11 @@ export function AdminOrdersPage(){
   if(!supabase)return
   setSelected(o);setItems([]);setEvents([]);setMessage('');setError('');setNote('')
   const [i,e]=await Promise.all([
-   supabase.from('order_items').select('*').eq('order_id',o.id).order('id'),
+   isSuperAdmin?supabase.from('order_items').select('*').eq('order_id',o.id).order('id'):supabase.rpc('ibuild_supplier_order_v1',{p_order_id:o.id}),
    isSuperAdmin?supabase.from('ibuild_order_events').select('id,kind,created_at,actor_kind').eq('order_id',o.id).order('created_at',{ascending:false}):Promise.resolve({data:[],error:null})
   ])
   if(i.error){setError('Não foi possível carregar os itens.');return}
-  setItems((i.data||[]) as OrderItem[]);setEvents((e.data||[]) as Event[])
+  setItems((isSuperAdmin?(i.data||[]):(i.data?.items||[])) as OrderItem[]);setEvents((e.data||[]) as Event[])
   if(isSuperAdmin)void supabase.rpc('ibuild_mark_seen',{p_order_id:o.id})
  }
  const act=async(name:string)=>{
@@ -128,7 +128,7 @@ export function AdminOrdersPage(){
  const updateStatus=async(value:OrderStatus)=>{
   if(!supabase||!selected||busy)return
   setBusy(true)
-  const {error:e}=await supabase.from('orders').update({status:value}).eq('id',selected.id)
+  const {error:e}=await supabase.rpc('ibuild_supplier_set_status_v1',{p_order_id:selected.id,p_status:value})
   if(e)setError(e.message);else{setSelected({...selected,status:value});await refresh()}
   setBusy(false)
  }
@@ -214,7 +214,7 @@ export function AdminOrdersPage(){
        {r.state==='ENCAMINHADO'&&<div className="status">Envio confirmado por você em {moment(r.forwarded_at)}.</div>}
        {r.state==='REJEITADO'&&<div className="status error">Pedido rejeitado.</div>}
       </>}
-      {!isSuperAdmin&&<label className="form-field"><span>Atualizar status comercial</span><select disabled={busy} value={selected.status} onChange={e=>void updateStatus(e.target.value as OrderStatus)}>{orderStatuses.map(s=><option key={s}>{s}</option>)}</select></label>}
+      {!isSuperAdmin&&<label className="form-field"><span>Atualizar status comercial</span><select disabled={busy} value={selected.status} onChange={e=>void updateStatus(e.target.value as OrderStatus)}>{orderStatuses.filter(s=>!['NOVO','CANCELADO'].includes(s)).map(s=><option key={s}>{s}</option>)}</select></label>}
       <div className="action-row"><button className="secondary" disabled={!visibleReport} onClick={()=>void navigator.clipboard.writeText(visibleReport)}>Copiar relatório</button></div>
       {isSuperAdmin&&<><h3>Histórico</h3><div className="ops-timeline">{events.map(e=><div key={e.id}><strong>{e.kind.replaceAll('_',' ').toLowerCase()}</strong><small>{moment(e.created_at)} · {e.actor_kind}</small></div>)}{!events.length&&<p>Sem eventos adicionais.</p>}</div></>}
     </div>
