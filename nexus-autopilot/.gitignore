@@ -3,3 +3,5 @@
 node_modules/
 nexus-autopilot.log
 nexus_autopilot_private.env
+
+.session-id
