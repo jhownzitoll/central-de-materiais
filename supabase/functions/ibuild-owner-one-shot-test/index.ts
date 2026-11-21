@@ -24,7 +24,7 @@ Deno.serve(async(req)=>{
   return reply({error:'owner_destination_not_confirmed'},409)
  // Unique test key is the concurrency/idempotency lock: never resend this key.
  const {data:locked,error:lockErr}=await db.from('ibuild_whatsapp_one_shot_tests')
-  .insert({test_key:TEST_KEY,state:'EM_EXECUCAO',recipient_phone:cfg.admin_phone,template_name:'hello_world'})
+  .insert({test_key:TEST_KEY,state:'INICIADO',recipient_phone:cfg.admin_phone,template_name:'hello_world'})
   .select('test_key').single()
  if(lockErr){
    if(lockErr.code==='23505')return reply({status:'previous_attempt_exists',test_key:TEST_KEY},409)
