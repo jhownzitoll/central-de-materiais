@@ -68,6 +68,30 @@ Deno.serve(async(req:Request)=>{
      summary.meta_probe_failure=e instanceof Error?e.name:'network'
    }
  }
+ if(token){
+   try{
+     const permissionsRes=await fetch('https://graph.facebook.com/'+apiVersion+'/me/permissions',{
+       headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(12000)
+     })
+     const result=await permissionsRes.json().catch(()=>({}))
+     summary.token_permissions_http_status=permissionsRes.status
+     if(permissionsRes.ok&&Array.isArray(result.data)){
+       summary.me_messaging_granted=result.data.some((p:any)=>p.permission==='whatsapp_business_messaging'&&p.status==='granted')
+       summary.me_management_granted=result.data.some((p:any)=>p.permission==='whatsapp_business_management'&&p.status==='granted')
+     }else summary.token_permissions_error_code=sanitizeCode(result?.error?.code)
+   }catch(e){summary.token_permissions_failure=e instanceof Error?e.name:'network'}
+ }
+ if(appSecret&&/^\d+$/.test(appId)){
+   try{
+     const appRes=await fetch('https://graph.facebook.com/'+apiVersion+'/'+appId+'?fields=id',{
+       headers:{Authorization:'Bearer '+appId+'|'+appSecret},signal:AbortSignal.timeout(12000)
+     })
+     const result=await appRes.json().catch(()=>({}))
+     summary.app_id_secret_valid=appRes.ok&&String(result?.id)===appId
+     summary.app_auth_http_status=appRes.status
+     if(!appRes.ok)summary.app_auth_error_code=sanitizeCode(result?.error?.code)
+   }catch(e){summary.app_auth_failure=e instanceof Error?e.name:'network'}
+ }
  if(body.pdf_order_id!==undefined){
    if(!isUuid(body.pdf_order_id))return res({error:'invalid_pdf_order_id'},400)
    const {data:order,error:oErr}=await db.from('orders').select('id,status').eq('id',body.pdf_order_id).maybeSingle()
