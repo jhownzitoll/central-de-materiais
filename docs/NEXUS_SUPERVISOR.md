@@ -39,7 +39,7 @@ select jobname,schedule,active from cron.job where jobname like 'ibuild_%';
 - `IBUILD.NOTIFICATION_REQUIRES_REVIEW`: não reenviar quando o resultado do provedor for incerto. Confirmar evento de entrega/erro primeiro.
 
 ## Recuperação automática de conversa — situação honesta
-A lógica de retomar a conversa por browser ainda **não está habilitada** (`chat_resume_enabled=false`). O teste do comando composto `BROWSER_ACTIONS` não confirmou encerramento e o runner deixou de renovar seu heartbeat. Manter esse recurso desativado até um mecanismo de execução local isolado conseguir verificar que a geração terminou, controlar a aba correta e garantir envio de cada prompt uma única vez. A automação do ChatGPT pode tentar uma retomada nas verificações horárias, mas deve observar esses limites.
+O servidor está configurado com `chat_resume_enabled=true`, mas isso **não prova que o navegador esteja online**. O novo supervisor `ibuild_chat_supervisor_2min_v1` somente prepara prompts depois de duas observações IDLE estáveis vindas do Nexus Autopilot Windows; a Edge Function `ibuild-nexus-autopilot` entrega cada prompt uma única vez à mesma sessão autenticada. Um envio duvidoso vira UNKNOWN sem repetição. O programa Windows precisa ser instalado e autenticado na máquina; o Runner antigo permanece independente e seu último heartbeat pode continuar offline. A automação ChatGPT normal via conectores é horária e não deve ser confundida com o ciclo de observação de 2 minutos.
 
 ## Objetivo do agente e fases
 - P0: comprovar pedido real de teste SEM cobrança, PDF individual por loja, notificação recebida ao proprietário, link/arquivo disponível, logs de recebimento.
