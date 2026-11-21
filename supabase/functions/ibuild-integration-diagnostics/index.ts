@@ -183,6 +183,27 @@ Deno.serve(async(req:Request)=>{
      }else summary.selected_waba_apps_error_code=sanitizeCode(apps?.error?.code)
    }catch(e){summary.selected_waba_apps_failure=e instanceof Error?e.name:'network'}
  }
+
+ const probeId='3030795093945086'
+ const probePhone='1427333740468343'
+ if(token){
+   for (const probe of [
+     {name:'waba_status',url:'https://graph.facebook.com/'+apiVersion+'/'+probeId+'?fields=id,name,account_review_status,health_status'},
+     {name:'waba_minimal',url:'https://graph.facebook.com/'+apiVersion+'/'+probeId+'?fields=id,name'},
+     {name:'phone_status',url:'https://graph.facebook.com/'+apiVersion+'/'+probePhone+'?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,platform_type,status'},
+     {name:'phone_minimal',url:'https://graph.facebook.com/'+apiVersion+'/'+probePhone+'?fields=id,display_phone_number,verified_name'}
+   ]){
+      try{
+        const rr=await fetch(probe.url,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(12000)})
+        const body=await rr.json().catch(()=>({}))
+        if(rr.ok){
+          summary[probe.name]={status:rr.status,details:body}
+        }else{
+          summary[probe.name]={status:rr.status,code:sanitizeCode(body?.error?.code),subcode:sanitizeCode(body?.error?.error_subcode),message:typeof body?.error?.message==='string'?body.error.message.slice(0,180):null}
+        }
+      }catch(e){summary[probe.name]={error:e instanceof Error?e.name:'network'}}
+   }
+ }
  if(body.pdf_order_id!==undefined){
    if(!isUuid(body.pdf_order_id))return res({error:'invalid_pdf_order_id'},400)
    const {data:order,error:oErr}=await db.from('orders').select('id,status').eq('id',body.pdf_order_id).maybeSingle()
