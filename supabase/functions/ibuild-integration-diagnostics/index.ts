@@ -157,6 +157,21 @@ Deno.serve(async(req:Request)=>{
      }else summary.selected_waba_phones_error_code=sanitizeCode(phones?.error?.code)
    }catch(e){summary.selected_waba_phones_failure=e instanceof Error?e.name:'network'}
    try{
+     const templatesRes=await fetch('https://graph.facebook.com/'+apiVersion+'/'+selectedWaba+'/message_templates?fields=name,status,language,components&limit=100',{
+       headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(14000)
+     })
+     const t=await templatesRes.json().catch(()=>({}))
+     summary.selected_waba_templates_status=templatesRes.status
+     if(templatesRes.ok&&Array.isArray(t.data)){
+       summary.selected_waba_template_count=t.data.length
+       summary.selected_waba_test_template=t.data.filter((x:any)=>x.name==='hello_world')
+          .map((x:any)=>({name:x.name,status:x.status,language:x.language}))
+       summary.selected_waba_order_template=t.data.filter((x:any)=>x.name==='ibuild_novo_pedido')
+          .map((x:any)=>({name:x.name,status:x.status,language:x.language,
+             header_format:Array.isArray(x.components)?x.components.find((c:any)=>c.type==='HEADER')?.format:null}))
+     }else summary.selected_waba_template_error_code=sanitizeCode(t?.error?.code)
+   }catch(e){summary.selected_waba_template_failure=e instanceof Error?e.name:'network'}
+   try{
      const appsResponse=await fetch('https://graph.facebook.com/'+apiVersion+'/'+selectedWaba+'/subscribed_apps?fields=id,name&limit=40',{
        headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(13000)
      })
