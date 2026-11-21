@@ -26,6 +26,7 @@ export function CartDrawer({ open, onClose, products, store }: {
   const [report, setReport] = useState('')
   const [reportError, setReportError] = useState('')
   const [documentStatus,setDocumentStatus]=useState<'PREPARANDO'|'PRONTO'|'PENDENTE'|null>(null)
+  const [emailStatus,setEmailStatus]=useState<'PREPARANDO'|'ACEITO'|'PENDENTE'|'INCERTO'|null>(null)
   const checkoutKey = useRef(newKey())
   useEffect(() => {
     const signature=JSON.stringify({lines:[...lines].sort((a,b)=>a.sku.localeCompare(b.sku)),notes:notes.trim(),deliveryMethod})
@@ -107,9 +108,18 @@ export function CartDrawer({ open, onClose, products, store }: {
       setResult(parsed)
       setDocumentStatus('PREPARANDO')
       void supabase.functions.invoke('ibuild-order-document-init',{body:{group_id:parsed.group_id}})
-        .then(({data,error:documentError})=>{
-          setDocumentStatus(!documentError&&data?.ok===true&&data.pdf_ready===parsed.orders.length?'PRONTO':'PENDENTE')
-        }).catch(()=>setDocumentStatus('PENDENTE'))
+        .then(async({data,error:documentError})=>{
+          const ready=!documentError&&data?.ok===true&&data.pdf_ready===parsed.orders.length
+          setDocumentStatus(ready?'PRONTO':'PENDENTE')
+          if(!ready){setEmailStatus('PENDENTE');return}
+          setEmailStatus('PREPARANDO')
+          try{
+            const {data:mail,error:mailError}=await supabase!.functions.invoke('ibuild-owner-email-dispatch',{body:{group_id:parsed.group_id}})
+            if(mailError||mail?.configured!==true){setEmailStatus('PENDENTE');return}
+            if(mail.accepted===parsed.orders.length){setEmailStatus('ACEITO');return}
+            setEmailStatus((mail.outcomes||[]).some((x:{state:string})=>x.state==='RESULTADO_INCERTO')?'INCERTO':'PENDENTE')
+          }catch{setEmailStatus('INCERTO')}
+        }).catch(()=>{setDocumentStatus('PENDENTE');setEmailStatus('PENDENTE')})
       try{sessionStorage.removeItem(KEY_STORAGE)}catch{}
       clear()
       checkoutKey.current=newKey()
@@ -137,11 +147,15 @@ export function CartDrawer({ open, onClose, products, store }: {
           <p role="status">{documentStatus==='PREPARANDO'?'Gerando PDFs privados para cada loja…':
             documentStatus==='PRONTO'?'PDFs privados por loja preparados. A central fará o encaminhamento.':
             'Documentos pendentes de confirmação. O pedido permanece registrado para conferência.'}</p>
+          <p role="status">{emailStatus==='PREPARANDO'?'Preparando notificação automática ao proprietário…':
+            emailStatus==='ACEITO'?'E-mail aceito pelo provedor; recebimento ainda não confirmado.':
+            emailStatus==='INCERTO'?'Resultado de envio incerto. Não tente reenviar sem conferência.':
+            'Notificação automática ao proprietário pendente de configuração ou confirmação.'}</p>
           <p className="small-note">O registro do pedido não significa que alguma notificação tenha sido entregue.</p>
           {report?<pre className="order-report">{report}</pre>
             :<div className="status error" role="status">{reportError||'Comprovante indisponível neste momento.'}</div>}
           <button className="secondary full" onClick={()=>{onClose();navigate(`/pedido/grupo/${result.group_id}`)}}>Abrir pedido consolidado</button>
-          <button className="secondary full" onClick={()=>{setResult(null);setReport('');setReportError('');setDocumentStatus(null);setNotes('');onClose()}}>Continuar no catálogo</button>
+          <button className="secondary full" onClick={()=>{setResult(null);setReport('');setReportError('');setDocumentStatus(null);setEmailStatus(null);setNotes('');onClose()}}>Continuar no catálogo</button>
         </div>:items.length?<>{groupedItems.map(group=><section key={group.id} aria-label={`Loja ${group.name}`}>
           <h3>{group.name}</h3>
           {group.products.map(({product,qty})=>
