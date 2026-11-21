@@ -16,6 +16,8 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+      - name: Verify live no-secret P0 auth guards
+        run: npm test
         env:
           VITE_SUPABASE_URL: https://pkpihrxucorfbniltdtk.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_lEJkwAfFUbo-yvqGeQIB1Q_T-W3pS_e
