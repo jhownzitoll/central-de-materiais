@@ -33,6 +33,18 @@ Deno.serve(async req=>{
  }
  let body:Record<string,unknown>
  try{body=await req.json()}catch{return reply({error:"invalid_json"},400)}
+ if(body.action==="readiness"){
+   if(!cronAllowed)return reply({error:"cron_only"},403)
+   const apiConfigured=!!env("IBUILD_RESEND_API_KEY")
+   const senderConfigured=!!env("IBUILD_EMAIL_FROM")
+   const recipient=env("IBUILD_OWNER_EMAIL")
+   const {data:owners,error:ownerError}=await db.from("profiles").select("email").eq("platform_role","SUPER_ADMIN").eq("active",true)
+   const recipientVerified=!ownerError&&!!recipient&&!!owners?.some(x=>String(x.email||"").toLowerCase()===recipient.toLowerCase())
+   return reply({ok:true,provider:"email",api_configured:apiConfigured,sender_configured:senderConfigured,
+     owner_recipient_configured:!!recipient,owner_recipient_verified:recipientVerified,
+     dispatch_ready:apiConfigured&&senderConfigured&&recipientVerified,
+     delivery_proven:false,previous_orders_eligible:false})
+ }
  if(!uuid(body.group_id))return reply({error:"invalid_group_id"},400)
  const {data:group}=await db.from("order_groups").select("id,user_id,created_at").eq("id",body.group_id).maybeSingle()
  if(!group||(!cronAllowed&&group.user_id!==customerId))return reply({error:"group_not_found"},404)
