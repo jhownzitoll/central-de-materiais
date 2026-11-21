@@ -1,0 +1,41 @@
+name: Gmail Bridge safety checks
+on:
+  push:
+    paths:
+      - 'integrations/google-apps-script/**'
+      - 'supabase/functions/ibuild-gmail-bridge/**'
+      - 'supabase/migrations/*gmail*'
+      - '.github/workflows/gmail-bridge.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate Apps Script syntax
+        run: |
+          cp integrations/google-apps-script/Code.gs /tmp/ibuild-gmail.js
+          node --check /tmp/ibuild-gmail.js
+      - name: Verify safe sending and private-only template
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const code=fs.readFileSync('integrations/google-apps-script/Code.gs','utf8');
+          const server=fs.readFileSync('supabase/functions/ibuild-gmail-bridge/index.ts','utf8');
+          const tests=[
+            ['not hardcoding a private token in GitHub',code.includes('__TOKEN_PRIVADO_AQUI__')],
+            ['only owner recipient',code.includes('ibuildVerificarConta_') && server.includes('ownerEmail(db)')],
+            ['PDF attachments',code.includes('Utilities.computeDigest')&&code.includes('attachments')],
+            ['send only after validation',code.includes('MailApp.sendEmail')],
+            ['one group one claim',server.includes('.eq("state","PENDING")')&&server.includes('claim_id')],
+            ['never retry UNKNOWN',server.includes('state==="UNKNOWN"')||server.includes('eq("state","PENDING")')],
+            ['no Meta integration',!code.includes('graph.facebook.com')&&!server.includes('graph.facebook.com')],
+          ];
+          for(const [label,passed] of tests){
+            console.log(passed?'PASS ':'FAIL ',label);
+            if(!passed)process.exitCode=1;
+          }
+          NODE
