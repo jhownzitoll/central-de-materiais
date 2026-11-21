@@ -24,6 +24,8 @@ export function AdminOrdersPage(){
  const [supplierPdfs,setSupplierPdfs]=useState<Record<string,File>>({})
  const [pdfNotice,setPdfNotice]=useState('')
  const [pdfError,setPdfError]=useState('')
+ const [secureDocuments,setSecureDocuments]=useState<Record<string,{pdf_url:string;whatsapp_url:string|null;sha256:string}>>({})
+ const [secureBusy,setSecureBusy]=useState<string|null>(null)
  const [routes,setRoutes]=useState<Routing[]>([])
  const [notices,setNotices]=useState<Notice[]>([])
  const [phones,setPhones]=useState<Record<string,string>>({})
@@ -57,6 +59,20 @@ export function AdminOrdersPage(){
    })
    return()=>{active=false}
  },[selectedGroup?.id,groupDetails])
+ const prepareSecureDocument=async(orderId:string)=>{
+   if(!supabase||!isSuperAdmin||secureBusy)return
+   setSecureBusy(orderId);setPdfError('');setPdfNotice('')
+   try{
+     const {data,error:fnError}=await supabase.functions.invoke('ibuild-order-doc-link',{body:{order_id:orderId}})
+     if(fnError||!data?.ok||typeof data.pdf_url!=='string')throw new Error('PRIVATE_PDF_LINK_UNAVAILABLE')
+     setSecureDocuments(previous=>({...previous,[orderId]:{
+       pdf_url:data.pdf_url,whatsapp_url:typeof data.whatsapp_url==='string'?data.whatsapp_url:null,
+       sha256:String(data.sha256||'')
+     }}))
+     setPdfNotice('Link temporário preparado para o proprietário. Nenhuma mensagem foi enviada automaticamente.')
+   }catch{setPdfError('Não foi possível preparar o link privado. Confira sua sessão e tente novamente.')}
+   finally{setSecureBusy(null)}
+ }
  const downloadPdf=(file:File)=>{
    downloadSupplierPdf(file)
    setPdfNotice('PDF baixado. Encaminhe o documento para a loja correspondente.')
@@ -229,6 +245,13 @@ export function AdminOrdersPage(){
               <button className="secondary" disabled={!supplierPdfs[order.id]||routingMap.get(order.id)?.state!=='ENCAMINHAMENTO_INICIADO'}
                 title="Disponível após aprovar e preparar o encaminhamento"
                 onClick={()=>sharePdf(supplierPdfs[order.id])}>Compartilhar PDF</button>
+              <button className="secondary" disabled={secureBusy!==null} onClick={()=>void prepareSecureDocument(order.id)}>
+                {secureBusy===order.id?'Gerando link…':'Preparar PDF privado e WhatsApp'}
+              </button>
+              {secureDocuments[order.id]&&<>
+                <a className="secondary" href={secureDocuments[order.id].pdf_url} target="_blank" rel="noopener noreferrer">Visualizar PDF privado (1 hora)</a>
+                {secureDocuments[order.id].whatsapp_url&&<a className="secondary" href={secureDocuments[order.id].whatsapp_url!} target="_blank" rel="noopener noreferrer">Abrir WhatsApp do proprietário (envio manual)</a>}
+              </>}
               <button className="primary fit" onClick={()=>void open(order)}>Conferir ou encaminhar esta loja</button>
             </div>
           </div>)}
@@ -257,6 +280,14 @@ export function AdminOrdersPage(){
           onClick={()=>selected&&downloadPdf(supplierPdfs[selected.id])}>
           {selected&&supplierPdfs[selected.id]?'Baixar pedido desta loja em PDF':'Preparando PDF…'}
         </button>
+        {isSuperAdmin&&selected&&<button className="secondary" disabled={secureBusy!==null}
+          onClick={()=>void prepareSecureDocument(selected.id)}>
+          {secureBusy===selected.id?'Gerando link…':'Preparar PDF privado e WhatsApp'}
+        </button>}
+        {isSuperAdmin&&selected&&secureDocuments[selected.id]&&<>
+          <a className="secondary" href={secureDocuments[selected.id].pdf_url} target="_blank" rel="noopener noreferrer">Visualizar PDF privado (1 hora)</a>
+          {secureDocuments[selected.id].whatsapp_url&&<a className="secondary" href={secureDocuments[selected.id].whatsapp_url!} target="_blank" rel="noopener noreferrer">Abrir WhatsApp do proprietário (envio manual)</a>}
+        </>}
         {isSuperAdmin&&<button className="secondary"
           disabled={!selected||!supplierPdfs[selected.id]||r?.state!=='ENCAMINHAMENTO_INICIADO'}
           title="Disponível após aprovação e preparação do encaminhamento"
