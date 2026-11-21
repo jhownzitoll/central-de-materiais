@@ -1,6 +1,6 @@
-import { chromium } from "playwright";
+import { connectViaExtension } from "playwriter";
 import { randomUUID, createHash } from "node:crypto";
-import { readFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { classify, shouldPoll, safePromptSendConfirmation } from "./state.mjs";
@@ -23,7 +23,7 @@ if(!ENDPOINT?.startsWith("https://pkpihrxucorfbniltdtk.supabase.co/functions/v1/
 }
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const urlIsChat=(url)=>/^https:\/\/chatgpt\.com(?:\/|$)/.test(url);
-let context=null,page=null;
+let connection=null,context=null,page=null;
 async function api(data){
  const res=await fetch(ENDPOINT,{method:"POST",headers:{
    "content-type":"application/json","x-nexus-autopilot-token":TOKEN
@@ -61,7 +61,7 @@ async function observe(){
   composer_ready:composerVisible,composer_empty:composerEmpty,
   browser_url:chat?current:"https://chatgpt.com/",
   last_response_fingerprint:fingerprint,
-  note:chat?"desktop-chromium":"outside-chatgpt-or-login"
+  note:chat?"playwriter-existing-chrome":"outside-chatgpt-or-login"
  };
 }
 async function report(dispatch,status,chatUrl,error){
@@ -99,21 +99,36 @@ async function sendOnce(dispatch){
  }
 }
 async function boot(){
- mkdirSync(path.join(BASE,".profile"),{recursive:true});
- context=await chromium.launchPersistentContext(path.join(BASE,".profile"),{
-  headless:process.env.NEXUS_HEADLESS==="1",viewport:{width:1360,height:900},
-  args:["--disable-background-timer-throttling"]
+ // Connect via user-enabled Playwriter extension to the user's EXISTING Chrome profile.
+ // Never start Chromium, Chrome for Testing, CDP port, copy cookies or touch personal tabs.
+ connection=await connectViaExtension({
+  tabGroup:"ibuild",
+  tabGroupColor:"blue",
+  selectBrowser:(browsers)=>{
+   const chromeProfiles=browsers.filter(b=>/chrome/i.test(String(b.browser))&&!/chromium/i.test(String(b.browser)));
+   if(chromeProfiles.length!==1)throw Error("Abra o Chrome correto e ative o Playwriter somente nesse perfil (icone verde).");
+   return chromeProfiles[0];
+  }
  });
- page=context.pages().find(p=>urlIsChat(p.url()))??await context.newPage();
- if(!urlIsChat(page.url()))await page.goto("https://chatgpt.com/",{waitUntil:"domcontentloaded",timeout:40000});
- console.log("Nexus Autopilot iniciado. Faça login nesta janela caso necessário. ChatGPT NORMAL, sem Work.");
+ context=connection.browser.contexts()[0];
+ if(!context)throw Error("Playwriter nao devolveu contexto do Chrome.");
+ // Always create one managed tab, never take over an existing personal tab.
+ page=await context.newPage();
+ await page.goto("https://chatgpt.com/",{waitUntil:"domcontentloaded",timeout:45000});
+ console.log("Nexus conectado ao CHROME existente, via Playwriter. Nenhum Chromium paralelo.");
 }
-process.on("SIGINT",()=>{context?.close().finally(()=>process.exit(0));});
-process.on("SIGTERM",()=>{context?.close().finally(()=>process.exit(0));});
+async function shutdown(){
+ try{await connection?.close()}catch{}
+ process.exit(0);
+}
+process.once("SIGINT",shutdown);
+process.once("SIGTERM",shutdown);
 await boot();
+let consecutiveErrors=0;
 while(true){
  try{
   const observation=await observe();
+  consecutiveErrors=0;
   await api(observation);
   if(shouldPoll(observation)){
    const command=await api({action:"poll"});
@@ -125,7 +140,12 @@ while(true){
   }
  }catch(err){
   console.error("Observação falhou; nenhuma mensagem será reenviada:",String(err.message).slice(0,170));
-  if(page?.isClosed())page=await context.newPage();
+  consecutiveErrors++;
+  if(consecutiveErrors>=5)throw Error("Playwriter desconectado ou Chrome indisponivel; solicitando reinicio do supervisor Windows.");
+  if(page?.isClosed()){
+   page=await context.newPage();
+   await page.goto("https://chatgpt.com/",{waitUntil:"domcontentloaded",timeout:45000});
+  }
  }
  await wait(24000);
 }
