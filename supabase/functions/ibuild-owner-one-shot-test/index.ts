@@ -1,7 +1,7 @@
 import {createClient} from "npm:@supabase/supabase-js@2.57.0"
 const env=(key:string)=>Deno.env.get(key)?.trim()||''
 const reply=(body:Record<string,unknown>,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json','cache-control':'no-store'}})
-const TEST_KEY='ibuild_owner_graph_probe_20261120_v2'
+const TEST_KEY='ibuild_owner_graph_probe_20261120_v3'
 Deno.serve(async(req)=>{
  if(req.method!=='POST')return reply({error:'method_not_allowed'},405)
  const dbUrl=env('SUPABASE_URL'),service=env('SUPABASE_SERVICE_ROLE_KEY')
@@ -32,7 +32,7 @@ Deno.serve(async(req)=>{
  }
  if(!locked)return reply({error:'lock_missing'},503)
  let state='RESULTADO_INCERTO'
- let code:string|null=null, httpStatus:number|null=null, providerId:string|null=null
+ let code:string|null=null, httpStatus:number|null=null, providerId:string|null=null, reason:string|null=null
  try{
    const result=await fetch('https://graph.facebook.com/'+version+'/'+phoneId+'/messages',{
      method:'POST',
@@ -45,13 +45,14 @@ Deno.serve(async(req)=>{
    const data=await result.json().catch(()=>({}))
    providerId=typeof data?.messages?.[0]?.id==='string'?data.messages[0].id:null
    code=data?.error?.code==null?null:String(data.error.code).slice(0,25)
+   reason=typeof data?.error?.message==='string'?data.error.message.slice(0,280):null
    state=result.ok&&providerId?'ACEITO':'REJEITADO'
  }catch(e){code=e instanceof Error?e.name:'network'}
  const {error:saveErr}=await db.from('ibuild_whatsapp_one_shot_tests').update({
    state,http_status:httpStatus,provider_message_id:providerId,error_code:code,
-   error_description:state==='RESULTADO_INCERTO'?'Transmissao inconclusiva; NAO reenviar automaticamente.':null,
+   error_description:reason||(state==='RESULTADO_INCERTO'?'Transmissao inconclusiva; NAO reenviar automaticamente.':null),
    completed_at:new Date().toISOString()
  }).eq('test_key',TEST_KEY)
  if(saveErr)return reply({status:state,save_error_code:saveErr.code,has_message_id:!!providerId},503)
- return reply({status:state,meta_http_status:httpStatus,meta_error_code:code,provider_message_id:providerId,recipient_last4:cfg.admin_phone.slice(-4)})
+ return reply({status:state,meta_http_status:httpStatus,meta_error_code:code,meta_error_description:reason,provider_message_id:providerId,recipient_last4:cfg.admin_phone.slice(-4)})
 })
