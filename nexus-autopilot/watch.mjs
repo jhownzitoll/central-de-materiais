@@ -1,9 +1,9 @@
 import { connectViaExtension } from "playwriter";
 import { randomUUID, createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { classify, shouldPoll, safePromptSendConfirmation } from "./state.mjs";
+import { classify, shouldPoll, hasConfirmedSubmission, CLIENT_VERSION } from "./state.mjs";
 
 const BASE=path.dirname(fileURLToPath(import.meta.url));
 const ENVFILE=path.join(BASE,".env");
@@ -15,7 +15,13 @@ if(existsSync(ENVFILE)){
 }
 const ENDPOINT=process.env.SUPABASE_EDGE_URL;
 const TOKEN=process.env.NEXUS_AUTOPILOT_TOKEN;
-const SESSION="nexus-local-"+randomUUID();
+// Stable ID across watchdog restarts: safe reuse of an unclaimed prepared command.
+const sessionFile=path.join(BASE,'.session-id');
+function getSessionId(){
+ try{const x=readFileSync(sessionFile,'utf8').trim();if(/^nexus-local-[a-f0-9-]{36}$/i.test(x))return x;}catch{}
+ const x='nexus-local-'+randomUUID();writeFileSync(sessionFile,x,{mode:0o600});return x;
+}
+const SESSION=getSessionId();
 if(!ENDPOINT?.startsWith("https://pkpihrxucorfbniltdtk.supabase.co/functions/v1/ibuild-nexus-autopilot")
   ||!TOKEN||TOKEN.length<40){
  console.error("Configuração local ausente/inválida: copie o arquivo privado para .env.");
@@ -61,7 +67,7 @@ async function observe(){
   composer_ready:composerVisible,composer_empty:composerEmpty,
   browser_url:chat?current:"https://chatgpt.com/",
   last_response_fingerprint:fingerprint,
-  note:chat?"playwriter-existing-chrome":"outside-chatgpt-or-login"
+  note:CLIENT_VERSION
  };
 }
 async function report(dispatch,status,chatUrl,error){
@@ -69,33 +75,51 @@ async function report(dispatch,status,chatUrl,error){
   console.log("Relatório do envio:",r.status);
  }catch(err){console.error("Não foi possível confirmar o resultado; NÃO reenviar.",String(err.message).slice(0,110));}
 }
+// Wait for an actual new user message in the DOM, up to 75s. A click or
+// changing URL is never sufficient proof and is NEVER followed by a retry.
+async function awaitConfirmedSubmission(before,prompt){
+ const expires=Date.now()+75_000;
+ while(Date.now()<expires){
+  if(page.isClosed())return false;
+  const messages=page.locator('[data-message-author-role="user"]');
+  const after=await messages.count().catch(()=>0);
+  if(after>before){
+   const last=await messages.last().innerText().catch(()=>'');
+   if(hasConfirmedSubmission({before,after,lastText:last,prompt}))return true;
+  }
+  await page.waitForTimeout(1200);
+ }
+ return false;
+}
 async function sendOnce(dispatch){
- let pressed=false;
+ let attempted=false;
  try{
-  // A separate new NORMAL ChatGPT conversation is created for each task.
-  // Never type into an existing user's composer or interrupt active generation.
-  await page.goto("https://chatgpt.com/",{waitUntil:"domcontentloaded",timeout:40000});
-  await page.waitForTimeout(1300);
-  const state=await observe();
-  if(!shouldPoll(state))throw Error("ChatGPT unavailable, login required, or busy");
-  const composer=editor(page);
+  // Navigate the agent-owned tab only. Never take control of personal tabs.
+  await page.goto("https://chatgpt.com/",{waitUntil:"domcontentloaded",timeout:45000});
+  let ok=false;
+  const start=Date.now();
+  while(Date.now()-start<35000){
+   if(shouldPoll(await observe())){ok=true;break;}
+   await page.waitForTimeout(1200);
+  }
+  if(!ok)throw Error("ChatGPT indisponivel, sem login ou geracao em andamento");
+  const field=editor(page);
   const before=await page.locator('[data-message-author-role="user"]').count();
-  await composer.fill(dispatch.prompt,{timeout:15000});
-  const contents=(await composer.innerText()).trim();
-  if(!contents.startsWith(dispatch.prompt.slice(0,45)))throw Error("Composer content mismatch");
-  // Exactly ONE submit attempt. Never repeat after an uncertain UI/network result.
-  pressed=true;
-  await composer.press("Enter",{timeout:8000});
-  await page.waitForTimeout(2300);
-  const after=await page.locator('[data-message-author-role="user"]').count();
-  if(!safePromptSendConfirmation(before,after,dispatch.prompt.slice(0,45)))
-    throw Error("No confirmed new user message after submit");
-  const last=await page.locator('[data-message-author-role="user"]').last().innerText().catch(()=>"");
-  if(!last.startsWith(dispatch.prompt.slice(0,45)))throw Error("Submitted message not confirmed");
+  await field.fill(dispatch.prompt,{timeout:15000});
+  const contents=(await field.innerText()).trim();
+  if(!contents.startsWith(dispatch.prompt.slice(0,45)))throw Error("O editor nao contem a tarefa autorizada");
+  const button=page.locator('[data-testid="send-button"],[data-testid="composer-send-button"],button[aria-label="Send message"],button[aria-label="Enviar mensagem"],button[aria-label="Enviar"]').first();
+  attempted=true;
+  if(await visible(button) && await button.isEnabled().catch(()=>false))await button.click({timeout:9000});
+  else await field.press("Enter",{timeout:9000});
+  if(!await awaitConfirmedSubmission(before,dispatch.prompt)){
+   throw Error("Nenhuma mensagem nova foi comprovada no ChatGPT em 75 segundos");
+  }
   await report(dispatch,"SENT",page.url(),"");
- }catch(err){
-  await report(dispatch,pressed?"UNKNOWN":"FAILED",urlIsChat(page.url())?page.url():null,
-    String(err.message).slice(0,160));
+  console.log("Nexus v3: envio confirmado na interface, sem verificar ainda a conclusao da tarefa.");
+ }catch(e){
+  await report(dispatch,attempted?"UNKNOWN":"FAILED",urlIsChat(page.url())?page.url():null,String(e?.message||e).slice(0,250));
+  console.error("Nexus v3: envio "+(attempted?"INCERTO":"NAO INICIADO")+". Nao repetir automaticamente.");
  }
 }
 async function boot(){
