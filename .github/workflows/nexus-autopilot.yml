@@ -1,0 +1,17 @@
+name: Nexus Autopilot smoke
+on:
+  push:
+    paths:
+      - 'nexus-autopilot/**'
+      - '.github/workflows/nexus-autopilot.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check nexus-autopilot/watch.mjs
+      - run: node --test nexus-autopilot/tests/state.test.mjs
