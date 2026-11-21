@@ -28,6 +28,28 @@ Deno.serve(async(req:Request)=>{
   webhook_verify_token_configured:!!env('IBUILD_META_VERIFY_TOKEN'),
   meta_graph_version:apiVersion
  }
+ // Validate that the server token belongs to the intended Meta app and has messaging scope.
+ const appSecret=env('IBUILD_META_APP_SECRET')
+ const appId=env('IBUILD_META_APP_ID')||'2586212028565530'
+ if(token&&appSecret&&/^\d+$/.test(appId)){
+   try{
+     const debugUrl='https://graph.facebook.com/'+apiVersion+'/debug_token?input_token='+encodeURIComponent(token)
+     const debugRes=await fetch(debugUrl,{
+       headers:{'Authorization':'Bearer '+appId+'|'+appSecret},signal:AbortSignal.timeout(15000)
+     })
+     const dbg=await debugRes.json().catch(()=>({}))
+     summary.token_debug_http_status=debugRes.status
+     if(debugRes.ok&&dbg?.data){
+       summary.token_valid=dbg.data.is_valid===true
+       summary.token_matches_app=String(dbg.data.app_id)===appId
+       summary.token_has_messaging=(dbg.data.scopes||[]).includes('whatsapp_business_messaging')
+       summary.token_has_management=(dbg.data.scopes||[]).includes('whatsapp_business_management')
+       summary.token_expires_at=typeof dbg.data.expires_at==='number'?dbg.data.expires_at:null
+     }else{
+       summary.token_debug_error_code=sanitizeCode(dbg?.error?.code)
+     }
+   }catch(e){summary.token_debug_failure=e instanceof Error?e.name:'network'}
+ }
  if(token&&isValidPhoneId(phoneId)&&/^v\d+\.\d+$/.test(apiVersion)){
    try{
      const response=await fetch('https://graph.facebook.com/'+apiVersion+'/'+phoneId+'?fields=id,verified_name',{
