@@ -1,0 +1,16 @@
+{
+  "name": "ibuild-nexus-autopilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node watch.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.57.0"
+  }
+}
