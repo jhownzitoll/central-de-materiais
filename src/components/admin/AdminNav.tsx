@@ -7,10 +7,11 @@ export function AdminNav() {
   const { isSuperAdmin } = useAuth()
   const [unread, setUnread] = useState(0)
   useEffect(() => {
-    if (!isSuperAdmin || !supabase) return
+    const client = supabase
+    if (!isSuperAdmin || !client) return
     let alive = true
     const count = async () => {
-      const { count, error } = await supabase.from('ibuild_admin_order_alerts')
+      const { count, error } = await client.from('ibuild_admin_order_alerts')
         .select('order_id', { count: 'exact', head: true }).is('acknowledged_at', null)
       if (alive && !error) setUnread(count || 0)
     }
