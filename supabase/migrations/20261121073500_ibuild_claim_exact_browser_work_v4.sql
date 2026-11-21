@@ -33,28 +33,30 @@ begin
 end;$$;
 revoke all on function ibuild_agent.claim_specific_work(text,uuid) from public,anon,authenticated;
 
--- Patch only the prompt text constructor, preserving the existing v3
--- stable-idle and uncertain-dispatch safety rules.
+-- Existing browser prompts encode the work UUID at the end of the worker name.
+-- This one-argument adapter preserves the prompt shape while ensuring exact claim.
+create or replace function ibuild_agent.claim_specific_work(p_worker text)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v_uuid uuid;
+begin
+ if p_worker is null or p_worker !~ '^chatgpt-normal-browser-[a-f0-9-]{36}$' then
+   return jsonb_build_object('status','INVALID_BROWSER_WORKER');
+ end if;
+ v_uuid:=right(p_worker,36)::uuid;
+ return ibuild_agent.claim_specific_work(p_worker,v_uuid);
+end;$$;
+revoke all on function ibuild_agent.claim_specific_work(text) from public,anon,authenticated;
+
+-- Update only the function name in the generated prompt (same one argument).
+-- No SQL literal concatenation, UUID rendering or replay behavior is changed.
 do $$
 declare original text; updated text;
 begin
  original:=pg_get_functiondef('ibuild_agent.chat_supervisor_2min_tick()'::regprocedure);
  if position('ibuild_agent.claim_work(' in original)=0 then
-   raise exception 'Expected dispatch prompt text not found; abort change safely';
+   raise exception 'Expected old prompt reference missing. Aborting.';
  end if;
- updated:=replace(original,
-   'ibuild_agent.claim_work(',
-   'ibuild_agent.claim_specific_work(');
- -- The previous prompt uses a worker identifier derived from the task ID.
- -- Append the exact UUID as the second argument in the SQL expression itself.
- updated:=replace(updated,
-   '||v_task.id::text||'''); se não for a tarefa indicada',
-   '||v_task.id::text||''','''||v_task.id::text||'''::uuid); se não for a tarefa indicada');
- if updated=original or position('ibuild_agent.claim_work(' in updated)>0 then
-   raise exception 'Dispatch prompt not patched; abort safely';
- end if;
- if position('claim_specific_work(' in updated)=0 or position('::uuid); se não for a tarefa indicada' in updated)=0 then
-   raise exception 'Target UUID argument missing; abort safely';
- end if;
+ updated:=replace(original,'ibuild_agent.claim_work(','ibuild_agent.claim_specific_work(');
+ if updated=original then raise exception 'No change'; end if;
  execute updated;
 end;$$;
