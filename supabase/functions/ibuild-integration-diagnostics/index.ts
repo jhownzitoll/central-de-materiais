@@ -94,7 +94,7 @@ Deno.serve(async(req:Request)=>{
  }
  if(token){
    try{
-     const appRes=await fetch('https://graph.facebook.com/'+apiVersion+'/app?fields=id',{
+     const appRes=await fetch('https://graph.facebook.com/'+apiVersion+'/app?fields=id,name',{
        headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(12000)
      })
      const result=await appRes.json().catch(()=>({}))
@@ -102,8 +102,43 @@ Deno.serve(async(req:Request)=>{
      if(appRes.ok&&typeof result?.id==='string'){
        summary.token_issued_for_expected_app=result.id===appId
        summary.token_app_id=result.id
+       summary.token_app_name=typeof result.name==='string'?result.name.slice(0,80):null
+       if(appSecret){
+         const pairRes=await fetch('https://graph.facebook.com/'+apiVersion+'/'+result.id+'?fields=id',{
+           headers:{Authorization:'Bearer '+result.id+'|'+appSecret},signal:AbortSignal.timeout(12000)
+         })
+         const pair=await pairRes.json().catch(()=>({}))
+         summary.stored_app_secret_matches_token_app=pairRes.ok&&String(pair?.id)===result.id
+         summary.stored_app_secret_pair_status=pairRes.status
+       }
      }else summary.token_app_query_code=sanitizeCode(result?.error?.code)
    }catch(e){summary.token_app_query_failure=e instanceof Error?e.name:'network'}
+ }
+ if(token){
+   const businessId='1137445162104025'
+   try{
+     const wabasRes=await fetch('https://graph.facebook.com/'+apiVersion+'/'+businessId+'/owned_whatsapp_business_accounts?fields=id,name&limit=50',{
+       headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(13000)
+     })
+     const wabasData=await wabasRes.json().catch(()=>({}))
+     summary.business_wa_accounts_status=wabasRes.status
+     if(wabasRes.ok&&Array.isArray(wabasData.data)){
+       summary.business_wa_accounts_count=wabasData.data.length
+       summary.business_wa_ids=wabasData.data.slice(0,6).map((a:any)=>a.id)
+       let phoneMatched=false
+       const inspected=[]
+       for(const account of wabasData.data.slice(0,3)){
+         const phonesRes=await fetch('https://graph.facebook.com/'+apiVersion+'/'+account.id+'/phone_numbers?fields=id&limit=60',{
+           headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(13000)
+         })
+         const phones=await phonesRes.json().catch(()=>({}))
+         inspected.push({waba_id:account.id,phones_readable:phonesRes.ok,includes_expected_phone:phonesRes.ok&&Array.isArray(phones.data)&&phones.data.some((x:any)=>String(x.id)===phoneId)})
+         if(phonesRes.ok&&Array.isArray(phones.data)&&phones.data.some((x:any)=>String(x.id)===phoneId))phoneMatched=true
+       }
+       summary.phone_id_matches_business_waba=phoneMatched
+       summary.business_waba_checks=inspected
+     }else summary.business_waba_error_code=sanitizeCode(wabasData?.error?.code)
+   }catch(e){summary.business_waba_probe_error=e instanceof Error?e.name:'network'}
  }
  if(body.pdf_order_id!==undefined){
    if(!isUuid(body.pdf_order_id))return res({error:'invalid_pdf_order_id'},400)
