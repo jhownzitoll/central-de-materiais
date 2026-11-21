@@ -7,6 +7,20 @@ const uuid=(v:unknown):v is string=>typeof v==="string"&&/^[a-f0-9]{8}-[a-f0-9]{
 const html=(v:unknown)=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]||c))
 const money=(n:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(n)
 const formatEmail=(v:string)=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)
+// Verified, unique active SUPER_ADMIN only; no recipient addresses returned to callers.
+async function resolveOwnerEmail(db:ReturnType<typeof createClient>):Promise<string>{
+ const {data:admins,error}=await db.from("profiles").select("id,email").eq("platform_role","SUPER_ADMIN").eq("active",true)
+ if(error||!admins||admins.length!==1||!formatEmail(String(admins[0].email||"")))return ""
+ const {data:auth,error:authError}=await db.auth.admin.getUserById(admins[0].id)
+ const verified=auth?.user
+ if(authError||!verified?.email_confirmed_at)return ""
+ const profileEmail=String(admins[0].email).toLowerCase()
+ if(String(verified.email||"").toLowerCase()!==profileEmail)return ""
+ const pinned=env("IBUILD_OWNER_EMAIL")
+ if(pinned&&pinned.toLowerCase()!==profileEmail)return ""
+ return profileEmail
+}
+
 Deno.serve(async req=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers})
  if(req.method!=="POST")return reply({error:"method_not_allowed"},405)
@@ -37,11 +51,10 @@ Deno.serve(async req=>{
    if(!cronAllowed)return reply({error:"cron_only"},403)
    const apiConfigured=!!env("IBUILD_RESEND_API_KEY")
    const senderConfigured=!!env("IBUILD_EMAIL_FROM")
-   const recipient=env("IBUILD_OWNER_EMAIL")
-   const {data:owners,error:ownerError}=await db.from("profiles").select("email").eq("platform_role","SUPER_ADMIN").eq("active",true)
-   const recipientVerified=!ownerError&&!!recipient&&!!owners?.some(x=>String(x.email||"").toLowerCase()===recipient.toLowerCase())
+   const recipientVerified=!!(await resolveOwnerEmail(db))
    return reply({ok:true,provider:"email",api_configured:apiConfigured,sender_configured:senderConfigured,
-     owner_recipient_configured:!!recipient,owner_recipient_verified:recipientVerified,
+     owner_recipient_configured:recipientVerified,owner_recipient_verified:recipientVerified,
+     recipient_source:"confirmed_super_admin",
      dispatch_ready:apiConfigured&&senderConfigured&&recipientVerified,
      delivery_proven:false,previous_orders_eligible:false})
  }
@@ -71,11 +84,10 @@ Deno.serve(async req=>{
      pdfReady++
    }catch{return reply({error:"pdf_generation_unavailable",pdf_ready:pdfReady},503)}
  }
- const key=env("IBUILD_RESEND_API_KEY"),sender=env("IBUILD_EMAIL_FROM"),recipient=env("IBUILD_OWNER_EMAIL")
- if(!key||!sender||!formatEmail(recipient))return reply({configured:false,accepted:0,pdf_ready:pdfReady,expected:orders.length,reason:"owner_email_transport_not_configured"})
- const {data:owners,error:ownerError}=await db.from("profiles").select("id,email").eq("platform_role","SUPER_ADMIN").eq("active",true)
- if(ownerError||!owners?.some(o=>String(o.email||"").toLowerCase()===recipient.toLowerCase()))
-   return reply({configured:false,accepted:0,pdf_ready:pdfReady,expected:orders.length,reason:"owner_recipient_not_verified"})
+ const key=env("IBUILD_RESEND_API_KEY"),sender=env("IBUILD_EMAIL_FROM")
+ const recipient=await resolveOwnerEmail(db)
+ if(!recipient)return reply({configured:false,accepted:0,pdf_ready:pdfReady,expected:orders.length,reason:"owner_recipient_not_verified"})
+ if(!key||!formatEmail(sender))return reply({configured:false,accepted:0,pdf_ready:pdfReady,expected:orders.length,reason:"owner_email_transport_not_configured"})
  const config=await db.from("ibuild_notification_config").select("admin_phone").eq("id",1).maybeSingle()
  const ownerPhone=String(config.data?.admin_phone||"").replace(/\D/g,"")
  const permittedWhatsApp=/^[1-9][0-9]{9,14}$/.test(ownerPhone)
