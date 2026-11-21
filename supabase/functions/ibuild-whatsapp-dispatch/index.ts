@@ -46,7 +46,7 @@ Deno.serve(async(req)=>{
    if(!order||order.user_id!==identityId)return json({error:'not_your_order'},403)
  }
  const {data:config,error:configError}=await admin.from('ibuild_notification_config').select('*').eq('id',1).single()
- if(configError||!config)return json({error:'config_unavailable'},503)
+ if(configError||!config)return json({error:'config_unavailable',db_code:configError?.code||'missing_config'},503)
  const accessToken=env('IBUILD_META_SYSTEM_USER_TOKEN')||env('IBUILD_META_ACCESS_TOKEN'),phoneId=env('IBUILD_META_PHONE_NUMBER_ID')
  const version=env('IBUILD_META_GRAPH_VERSION')||'v26.0'
  if(!config.enabled||!config.admin_phone||!accessToken||!phoneId)return json({configured:false,reason:'meta_or_recipient_pending',processed:0})
