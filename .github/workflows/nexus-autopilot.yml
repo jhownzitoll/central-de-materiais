@@ -12,6 +12,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
       - run: node --check nexus-autopilot/watch.mjs
       - run: node --test nexus-autopilot/tests/state.test.mjs
+      - name: Install pinned Playwriter and verify actual ESM export
+        working-directory: nexus-autopilot
+        run: |
+          npm install --no-audit --no-fund --ignore-scripts
+          node check-playwriter.mjs
