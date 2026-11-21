@@ -14,6 +14,7 @@ import { GroupOrderPage } from './pages/GroupOrderPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { AdminProductsPage } from './pages/admin/AdminProductsPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
+import { AdminAlertsPage } from './pages/admin/AdminAlertsPage'
 import { AdminClientsPage } from './pages/admin/AdminClientsPage'
 import { AdminConfigPage } from './pages/admin/AdminConfigPage'
 import { AdminStoresPage } from './pages/admin/AdminStoresPage'
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="admin/lojas" element={<ProtectedRoute superAdmin><AdminStoresPage /></ProtectedRoute>} />
           <Route path="admin/produtos" element={<ProtectedRoute admin><AdminProductsPage /></ProtectedRoute>} />
           <Route path="admin/pedidos" element={<ProtectedRoute admin><AdminOrdersPage /></ProtectedRoute>} />
+          <Route path="admin/avisos" element={<ProtectedRoute superAdmin><AdminAlertsPage /></ProtectedRoute>} />
           <Route path="admin/clientes" element={<ProtectedRoute superAdmin><AdminClientsPage /></ProtectedRoute>} />
           <Route path="admin/whatsapp" element={<ProtectedRoute superAdmin><AdminWhatsAppPage /></ProtectedRoute>} />
           <Route path="admin/config" element={<ProtectedRoute admin><AdminConfigPage /></ProtectedRoute>} />
