@@ -75,6 +75,9 @@ Deno.serve(async(req)=>{
    meta_http_status:create.status,
    meta_template_id:typeof result.id==='string'?result.id:null,
    meta_error_code:code(result),
-   meta_error_message:desc(result)
+   meta_error_message:desc(result),
+   meta_error_subcode:result?.error?.error_subcode??null,
+   meta_error_details:typeof result?.error?.error_data?.details==='string'?result.error.error_data.details.slice(0,300):null,
+   meta_error_user_message:typeof result?.error?.error_user_msg==='string'?result.error.error_user_msg.slice(0,200):null
  })
 })
