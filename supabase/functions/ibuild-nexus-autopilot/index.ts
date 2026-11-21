@@ -51,7 +51,7 @@ Deno.serve(async request=>{
    if(!signal||signal.state!=="IDLE"||!signal.authenticated||!signal.composer_ready||!signal.composer_empty
       ||Date.now()-Date.parse(signal.observed_at)>75_000)return json({ok:true,status:"NOT_READY"});
    const {data:dispatch,error:findErr}=await db.from("ibuild_chat_dispatches")
-     .select("id,prompt_text,work_id").eq("state","PREPARED").order("created_at",{ascending:true}).limit(1).maybeSingle();
+     .select("id,prompt_text,work_id").eq("state","PREPARED").eq("session_id",session).order("created_at",{ascending:true}).limit(1).maybeSingle();
    if(findErr)return json({error:"queue_unavailable"},503);
    if(!dispatch)return json({ok:true,status:"NO_COMMAND"});
    // Atomic conditional claim. If the response times out, the command becomes UNKNOWN, never retried.
