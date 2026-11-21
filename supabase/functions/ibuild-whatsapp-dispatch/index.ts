@@ -12,25 +12,39 @@ Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
  if(req.method!=='POST')return json({error:'method_not_allowed'},405)
  const url=env('SUPABASE_URL'),anon=env('SUPABASE_ANON_KEY'),service=env('SUPABASE_SERVICE_ROLE_KEY')
- const token=req.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]
+ const token=req.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]||''
  if(!url||!anon||!service)return json({error:'supabase_not_configured'},503)
- if(!token)return json({error:'auth_required'},401)
- const client=createClient(url,anon,{global:{headers:{Authorization:'Bearer '+token}},auth:{persistSession:false,autoRefreshToken:false}})
- const {data:identity,error:authError}=await client.auth.getUser(token)
- if(authError||!identity.user)return json({error:'unauthorized'},401)
- const {data:profile,error:profileError}=await client.from('profiles').select('platform_role,active').eq('id',identity.user.id).single()
- if(profileError||!profile?.active)return json({error:'access_denied'},403)
- const superAdmin=profile.platform_role==='SUPER_ADMIN'
+ const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}})
+ const cronTs=req.headers.get('x-ibuild-cron-ts')||''
+ const cronSig=req.headers.get('x-ibuild-cron-signature')||''
+ let cronAuthorized=false
+ if(cronTs||cronSig){
+   const {data:verified,error:cronError}=await admin.rpc('ibuild_verify_cron',{p_ts:cronTs,p_sig:cronSig})
+   if(cronError||verified!==true)return json({error:'cron_unauthorized'},403)
+   cronAuthorized=true
+ }
+ if(!cronAuthorized&&!token)return json({error:'auth_required'},401)
+ let superAdmin=cronAuthorized
+ let identityId:string|null=null
+ const client=cronAuthorized?null:createClient(url,anon,{global:{headers:{Authorization:'Bearer '+token}},auth:{persistSession:false,autoRefreshToken:false}})
+ if(client){
+   const {data:identity,error:authError}=await client.auth.getUser(token)
+   if(authError||!identity.user)return json({error:'unauthorized'},401)
+   identityId=identity.user.id
+   const {data:profile,error:profileError}=await client.from('profiles').select('platform_role,active').eq('id',identityId).single()
+   if(profileError||!profile?.active)return json({error:'access_denied'},403)
+   superAdmin=profile.platform_role==='SUPER_ADMIN'
+ }
  let body:Record<string,unknown>
  try {body=await req.json()}catch{return json({error:'invalid_json'},400)}
+ if(cronAuthorized&&body.order_id!==undefined)return json({error:'cron_order_not_allowed'},403)
  const orderId=body.order_id
  if(orderId!==undefined&&!isUUID(orderId))return json({error:'invalid_order_id'},400)
  if(!superAdmin){
-   if(!isUUID(orderId))return json({error:'admin_only'},403)
+   if(!client||!identityId||!isUUID(orderId))return json({error:'admin_only'},403)
    const {data:order}=await client.from('orders').select('id,user_id').eq('id',orderId).maybeSingle()
-   if(!order||order.user_id!==identity.user.id)return json({error:'not_your_order'},403)
+   if(!order||order.user_id!==identityId)return json({error:'not_your_order'},403)
  }
- const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}})
  const {data:config,error:configError}=await admin.from('ibuild_notification_config').select('*').eq('id',1).single()
  if(configError||!config)return json({error:'config_unavailable'},503)
  const accessToken=env('IBUILD_META_SYSTEM_USER_TOKEN')||env('IBUILD_META_ACCESS_TOKEN'),phoneId=env('IBUILD_META_PHONE_NUMBER_ID')
