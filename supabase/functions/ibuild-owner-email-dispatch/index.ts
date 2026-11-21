@@ -12,23 +12,58 @@ Deno.serve(async req=>{
  if(req.method!=="POST")return reply({error:"method_not_allowed"},405)
  const dbUrl=env("SUPABASE_URL"),anon=env("SUPABASE_ANON_KEY"),service=env("SUPABASE_SERVICE_ROLE_KEY")
  if(!dbUrl||!anon||!service)return reply({error:"backend_missing"},503)
- const jwt=req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1]||""
- if(!jwt)return reply({error:"auth_required"},401)
- const scoped=createClient(dbUrl,anon,{global:{headers:{Authorization:"Bearer "+jwt}},auth:{persistSession:false,autoRefreshToken:false}})
- const {data:identity,error:authError}=await scoped.auth.getUser(jwt)
- if(authError||!identity.user)return reply({error:"invalid_session"},401)
+ // Cron is independently HMAC-authenticated; no public or service-role bearer bypass.
+ const db=createClient(dbUrl,service,{auth:{persistSession:false,autoRefreshToken:false}})
+ const cronTs=req.headers.get("x-ibuild-cron-ts")||""
+ const cronSig=req.headers.get("x-ibuild-cron-signature")||""
+ let cronAllowed=false
+ if(cronTs||cronSig){
+   const {data:verified,error:cronError}=await db.rpc("ibuild_verify_cron",{p_ts:cronTs,p_sig:cronSig})
+   if(cronError||verified!==true)return reply({error:"cron_unauthorized"},403)
+   cronAllowed=true
+ }
+ let customerId:string|null=null
+ if(!cronAllowed){
+   const jwt=req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1]||""
+   if(!jwt)return reply({error:"auth_required"},401)
+   const scoped=createClient(dbUrl,anon,{global:{headers:{Authorization:"Bearer "+jwt}},auth:{persistSession:false,autoRefreshToken:false}})
+   const {data:identity,error:authError}=await scoped.auth.getUser(jwt)
+   if(authError||!identity.user)return reply({error:"invalid_session"},401)
+   customerId=identity.user.id
+ }
  let body:Record<string,unknown>
  try{body=await req.json()}catch{return reply({error:"invalid_json"},400)}
  if(!uuid(body.group_id))return reply({error:"invalid_group_id"},400)
- const db=createClient(dbUrl,service,{auth:{persistSession:false,autoRefreshToken:false}})
  const {data:group}=await db.from("order_groups").select("id,user_id,created_at").eq("id",body.group_id).maybeSingle()
- if(!group||group.user_id!==identity.user.id)return reply({error:"group_not_found"},404)
+ if(!group||(!cronAllowed&&group.user_id!==customerId))return reply({error:"group_not_found"},404)
+ if(cronAllowed&&Date.parse(group.created_at)<Date.parse("2026-11-21T05:11:18Z"))
+   return reply({error:"cron_only_new_groups"},403)
  const {data:links,error:linksError}=await db.from("order_group_orders").select("order_id,store_id").eq("group_id",group.id)
  if(linksError||!links?.length||links.length>12)return reply({error:"group_links_invalid"},422)
  const {data:orders,error:ordersError}=await db.from("orders").select("id,store_id,public_number,store_snapshot,status,user_id").in("id",links.map(x=>x.order_id))
- if(ordersError||!orders||orders.length!==links.length||orders.some(o=>o.user_id!==identity.user.id||o.status==="CANCELADO"))return reply({error:"orders_not_eligible"},409)
+ if(ordersError||!orders||orders.length!==links.length||orders.some(o=>o.user_id!==group.user_id||o.status==="CANCELADO"))return reply({error:"orders_not_eligible"},409)
+ // Recover from browser/session interruption: private PDFs are created server-side.
+ let pdfReady=0
+ for(const order of orders){
+   const {data:prior,error:priorError}=await db.from("ibuild_order_documents").select("order_id").eq("order_id",order.id).maybeSingle()
+   if(priorError)return reply({error:"pdf_lookup_failed",pdf_ready:pdfReady},503)
+   if(prior){pdfReady++;continue}
+   try{
+     const generated=await fetch(dbUrl+"/functions/v1/ibuild-order-pdf",{
+       method:"POST",headers:{"Authorization":"Bearer "+service,"Content-Type":"application/json"},
+       body:JSON.stringify({order_id:order.id}),signal:AbortSignal.timeout(30000)
+     })
+     const result=await generated.json().catch(()=>({}))
+     if(!generated.ok||result?.ok!==true||result?.document?.order_id!==order.id)
+       return reply({error:"pdf_generation_incomplete",pdf_ready:pdfReady},503)
+     pdfReady++
+   }catch{return reply({error:"pdf_generation_unavailable",pdf_ready:pdfReady},503)}
+ }
  const key=env("IBUILD_RESEND_API_KEY"),sender=env("IBUILD_EMAIL_FROM"),recipient=env("IBUILD_OWNER_EMAIL")
- if(!key||!sender||!formatEmail(recipient))return reply({configured:false,accepted:0,expected:orders.length,reason:"owner_email_transport_not_configured"})
+ if(!key||!sender||!formatEmail(recipient))return reply({configured:false,accepted:0,pdf_ready:pdfReady,expected:orders.length,reason:"owner_email_transport_not_configured"})
+ const {data:owners,error:ownerError}=await db.from("profiles").select("id,email").eq("platform_role","SUPER_ADMIN").eq("active",true)
+ if(ownerError||!owners?.some(o=>String(o.email||"").toLowerCase()===recipient.toLowerCase()))
+   return reply({configured:false,accepted:0,pdf_ready:pdfReady,expected:orders.length,reason:"owner_recipient_not_verified"})
  const config=await db.from("ibuild_notification_config").select("admin_phone").eq("id",1).maybeSingle()
  const ownerPhone=String(config.data?.admin_phone||"").replace(/\D/g,"")
  const permittedWhatsApp=/^[1-9][0-9]{9,14}$/.test(ownerPhone)
