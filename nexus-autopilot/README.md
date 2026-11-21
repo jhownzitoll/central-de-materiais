@@ -1,14 +1,15 @@
-# iBuild Nexus Autopilot — companheiro local Windows
+# iBuild Nexus Autopilot — Google Chrome autenticado (Windows)
 
-**Status:** código e infraestrutura implantados; instalação e sessão autenticada no PC do proprietário ainda não comprovadas. Sem Work nem API OpenAI paga. O Supabase verifica a cada 2 minutos; o programa Windows observa a interface local ~24 s e só tenta uma tarefa previamente preparada com duas amostras idle estáveis. O programa NÃO liga um PC desligado.
+**Status:** código e infraestrutura implantados; instalação, ativação da extensão Playwriter e sessão autenticada no Chrome do proprietário ainda não comprovadas. Sem Work nem API OpenAI paga. O Supabase verifica a cada 2 minutos; o programa Windows observa a interface local ~24 s e só tenta uma tarefa previamente preparada com duas amostras idle estáveis. O programa NÃO liga um PC desligado.
 
 ## Instalação em uma única máquina
 
-1. Baixe a pasta `nexus-autopilot` do repositório e coloque o arquivo privado `nexus_autopilot_private.env` ao lado do `install-windows.ps1`.
-2. Abra PowerShell na pasta e execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\install-windows.ps1`.
-3. A nova janela Chromium aparecerá; entre em `chatgpt.com` com sua conta se solicitado. É um perfil separado do Chrome pessoal.
-4. Não feche o processo Windows; ele tem auto-restart. O atalho na pasta Inicializar reinicia depois do próximo login no Windows. O computador precisa ficar ligado e a sessão do Windows iniciada.
-5. Para pausar, retire temporariamente o atalho `iBuild Nexus Autopilot.lnk` de `shell:startup`, encerre o processo supervisor e desative a chave `ibuild_nexus_autopilot_keys.enabled` pelo Supabase; isso não revoga o navegador existente.
+1. Extraia o instalador completo com os scripts e o arquivo privado `nexus_autopilot_private.env`; execute o BAT da raiz. Alternativamente instale manualmente a pasta com `install-windows.ps1`.
+2. Abra o **seu Google Chrome já autenticado**, em `https://chatgpt.com/`. Instale a extensão [Playwriter](https://chromewebstore.google.com/detail/playwriter/jfeammnjpkecdekppnclgkkffahnhfhe) somente se ainda não estiver instalada.
+3. Clique no ícone **Playwriter** nessa aba; ele deve ficar **verde**. Esta ação de autorização precisa ser feita no Chrome, não pode ser forçada pelo instalador.
+4. O agente conecta ao Chrome existente por meio da extensão e abre apenas uma aba própria no grupo `ibuild`, preservando suas outras abas e contas. Não baixa o Chromium do Playwright nem copia cookies.
+5. O atalho de inicialização do Windows reinicia o processo depois do login. O computador e o Chrome precisam estar funcionando e a extensão conectada.
+6. Para pausar, retire o atalho `iBuild Nexus Autopilot.lnk` de `shell:startup`, encerre o supervisor e desative a chave do broker no Supabase se desejar revogar o acesso.
 
 ## Limitações
 
