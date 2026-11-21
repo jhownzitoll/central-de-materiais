@@ -140,6 +140,34 @@ Deno.serve(async(req:Request)=>{
      }else summary.business_waba_error_code=sanitizeCode(wabasData?.error?.code)
    }catch(e){summary.business_waba_probe_error=e instanceof Error?e.name:'network'}
  }
+ // WABA selected in the authenticated Meta Business Suite portfolio.
+ if(token){
+   const selectedWaba='3030795093945086'
+   try{
+     const phonesResponse=await fetch('https://graph.facebook.com/'+apiVersion+'/'+selectedWaba+'/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status&limit=40',{
+       headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(13000)
+     })
+     const phones=await phonesResponse.json().catch(()=>({}))
+     summary.selected_waba_phones_http_status=phonesResponse.status
+     if(phonesResponse.ok&&Array.isArray(phones.data)){
+       summary.selected_waba_phone_count=phones.data.length
+       summary.selected_waba_contains_current_phone=phones.data.some((v:any)=>String(v.id)===phoneId)
+       summary.selected_waba_phone_ids=phones.data.slice(0,10).map((v:any)=>String(v.id))
+       summary.selected_waba_phone_code_status=phones.data.find((v:any)=>String(v.id)===phoneId)?.code_verification_status||null
+     }else summary.selected_waba_phones_error_code=sanitizeCode(phones?.error?.code)
+   }catch(e){summary.selected_waba_phones_failure=e instanceof Error?e.name:'network'}
+   try{
+     const appsResponse=await fetch('https://graph.facebook.com/'+apiVersion+'/'+selectedWaba+'/subscribed_apps?fields=id,name&limit=40',{
+       headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(13000)
+     })
+     const apps=await appsResponse.json().catch(()=>({}))
+     summary.selected_waba_apps_http_status=appsResponse.status
+     if(appsResponse.ok&&Array.isArray(apps.data)){
+       summary.selected_waba_app_count=apps.data.length
+       summary.selected_waba_app_ids=apps.data.slice(0,12).map((v:any)=>String(v.id||v.whatsapp_business_api_data?.id||''))
+     }else summary.selected_waba_apps_error_code=sanitizeCode(apps?.error?.code)
+   }catch(e){summary.selected_waba_apps_failure=e instanceof Error?e.name:'network'}
+ }
  if(body.pdf_order_id!==undefined){
    if(!isUuid(body.pdf_order_id))return res({error:'invalid_pdf_order_id'},400)
    const {data:order,error:oErr}=await db.from('orders').select('id,status').eq('id',body.pdf_order_id).maybeSingle()
