@@ -12,8 +12,8 @@ if(!(Get-Command npm -ErrorAction SilentlyContinue)){throw "npm nao encontrado (
 Set-Location $root
 & npm install --no-audit --no-fund
 if($LASTEXITCODE -ne 0){throw "npm install falhou. Nao foi configurado o autostart."}
-& npx playwright install chromium
-if($LASTEXITCODE -ne 0){throw "Playwright Chromium nao instalado."}
+# Playwriter attaches to the user's already authenticated Chrome via its extension.
+# Never download/install a separate Chromium or copy Chrome cookies.
 $run=Join-Path $root "supervise-windows.ps1"
 $startup=[Environment]::GetFolderPath("Startup")
 $shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $startup "iBuild Nexus Autopilot.lnk"))
@@ -23,6 +23,6 @@ $shortcut.WorkingDirectory=$root
 $shortcut.WindowStyle=7
 $shortcut.Description="Reinicia somente o Nexus Autopilot da iBuild depois de login no Windows"
 $shortcut.Save()
-Write-Host "Instalado. O Chromium da iBuild sera iniciado e pedira login no ChatGPT normal uma unica vez."
+Write-Host "Instalado. Abra o Chrome JA AUTENTICADO e clique no icone da extensao Playwriter na aba do ChatGPT ate ficar verde."
 Write-Host "O supervisor do Windows reinicia o processo se ele terminar; funcao depende do PC ligado e sessao Windows iniciada."
 Start-Process -FilePath (Get-Command powershell.exe).Source -ArgumentList @("-NoProfile","-ExecutionPolicy","Bypass","-File",$run) -WorkingDirectory $root
