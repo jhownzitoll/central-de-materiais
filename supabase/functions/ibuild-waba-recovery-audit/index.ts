@@ -56,6 +56,15 @@ Deno.serve(async (req: Request) => {
     WABA_ID,
     "id,name,status,account_review_status,business_verification_status,ownership_type,primary_funding_id,health_status"
   );
+  // The composite account field request may fail for a single privileged field.
+  // Retry with previously validated safe fields and probe supplemental fields independently.
+  const accountSafe = account.http === 200 ? account :
+    await request(WABA_ID, "id,name,account_review_status,health_status");
+  const accountStatus = await request(WABA_ID, "id,status");
+  const accountVerification = await request(WABA_ID, "id,business_verification_status");
+  const accountOwnership = await request(WABA_ID, "id,ownership_type");
+  const accountReview = await request(WABA_ID, "id,account_review_status");
+
   const numberList = await request(
     WABA_ID + "/phone_numbers",
     "id,status,code_verification_status,platform_type,display_phone_number,verified_name"
@@ -76,7 +85,7 @@ Deno.serve(async (req: Request) => {
       }))
     : [];
 
-  const health = account?.data?.health_status;
+  const health = accountSafe?.data?.health_status;
   const healthEntities = Array.isArray(health?.entities)
     ? health.entities.slice(0, 8).map((entity: any) => ({
         entity_type: String(entity.entity_type || "").slice(0, 30),
@@ -93,14 +102,19 @@ Deno.serve(async (req: Request) => {
     graph_version: version,
     business_id: BUSINESS_ID,
     waba_id: WABA_ID,
-    waba_http: account.http,
-    waba_error: account.error || null,
-    waba_status: account?.data?.status || null,
-    waba_review_status: account?.data?.account_review_status || null,
-    business_verification_status: account?.data?.business_verification_status || null,
-    ownership_type: account?.data?.ownership_type || null,
-    waba_name: account?.data?.name || null,
-    primary_funding_id_present: !!account?.data?.primary_funding_id,
+    waba_http: accountSafe.http,
+    waba_composite_error: account.error || null,
+    waba_status_http: accountStatus.http,
+    waba_verification_http: accountVerification.http,
+    waba_ownership_http: accountOwnership.http,
+    waba_review_http: accountReview.http,
+    waba_error: accountSafe.error || null,
+    waba_status: accountStatus?.data?.status || accountSafe?.data?.status || null,
+    waba_review_status: accountReview?.data?.account_review_status || accountSafe?.data?.account_review_status || null,
+    business_verification_status: accountVerification?.data?.business_verification_status || accountSafe?.data?.business_verification_status || null,
+    ownership_type: accountOwnership?.data?.ownership_type || accountSafe?.data?.ownership_type || null,
+    waba_name: accountSafe?.data?.name || null,
+    primary_funding_id_present: account.http === 200 ? !!account?.data?.primary_funding_id : null,
     health_can_send: health?.can_send_message || null,
     health_entities: healthEntities,
     phones_http: numberList.http,
