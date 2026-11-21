@@ -92,6 +92,19 @@ Deno.serve(async(req:Request)=>{
      if(!appRes.ok)summary.app_auth_error_code=sanitizeCode(result?.error?.code)
    }catch(e){summary.app_auth_failure=e instanceof Error?e.name:'network'}
  }
+ if(token){
+   try{
+     const appRes=await fetch('https://graph.facebook.com/'+apiVersion+'/app?fields=id',{
+       headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(12000)
+     })
+     const result=await appRes.json().catch(()=>({}))
+     summary.token_app_query_status=appRes.status
+     if(appRes.ok&&typeof result?.id==='string'){
+       summary.token_issued_for_expected_app=result.id===appId
+       summary.token_app_id=result.id
+     }else summary.token_app_query_code=sanitizeCode(result?.error?.code)
+   }catch(e){summary.token_app_query_failure=e instanceof Error?e.name:'network'}
+ }
  if(body.pdf_order_id!==undefined){
    if(!isUuid(body.pdf_order_id))return res({error:'invalid_pdf_order_id'},400)
    const {data:order,error:oErr}=await db.from('orders').select('id,status').eq('id',body.pdf_order_id).maybeSingle()
