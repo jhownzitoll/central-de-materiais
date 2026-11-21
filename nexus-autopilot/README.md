@@ -2,6 +2,10 @@
 
 **Status:** código e infraestrutura implantados; instalação, ativação da extensão Playwriter e sessão autenticada no Chrome do proprietário ainda não comprovadas. Sem Work nem API OpenAI paga. O Supabase verifica a cada 2 minutos; o programa Windows observa a interface local ~24 s e só tenta uma tarefa previamente preparada com duas amostras idle estáveis. O programa NÃO liga um PC desligado.
 
+## Erro da instalação de 21/11 (corrigido)
+
+O primeiro instalador usava `node --input-type=module -e` com aspas JavaScript embutidas no PowerShell. O Windows eliminava as aspas e retornava `SyntaxError: Unexpected identifier 'playwriter'`, **depois** de instalar Node e Playwriter. A correção é executar `node check-playwriter.mjs` diretamente: o export foi testado de verdade em GitHub Actions com Node 24 e `playwriter@0.12.0`. O pacote de reparo contém `CORRIGIR_INSTALACAO.bat` que reutiliza a instalação no AppData e preserva o Chrome e a chave existente. Não confundir os seis testes locais com verificação da sessão Chrome em tempo real.
+
 ## Instalação em uma única máquina
 
 1. Extraia o instalador completo com os scripts e o arquivo privado `nexus_autopilot_private.env`; execute o BAT da raiz. Alternativamente instale manualmente a pasta com `install-windows.ps1`.
