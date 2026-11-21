@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Continue'
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $watch=Join-Path $root "watch.mjs"
 $log=Join-Path $root "nexus-autopilot.log"
-$guard=New-Object System.Threading.Mutex($false,"Local\IBuildNexusAutopilotV1")
+$guard=[System.Threading.Mutex]::new($false,'Local\IBuildNexusAutopilotV1')
 $owner=$false
 try {
  $owner=$guard.WaitOne(0)
