@@ -33,7 +33,7 @@ Deno.serve(async(req)=>{
  const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}})
  const {data:config,error:configError}=await admin.from('ibuild_notification_config').select('*').eq('id',1).single()
  if(configError||!config)return json({error:'config_unavailable'},503)
- const accessToken=env('IBUILD_META_ACCESS_TOKEN'),phoneId=env('IBUILD_META_PHONE_NUMBER_ID')
+ const accessToken=env('IBUILD_META_SYSTEM_USER_TOKEN')||env('IBUILD_META_ACCESS_TOKEN'),phoneId=env('IBUILD_META_PHONE_NUMBER_ID')
  const version=env('IBUILD_META_GRAPH_VERSION')||'v26.0'
  if(!config.enabled||!config.admin_phone||!accessToken||!phoneId)return json({configured:false,reason:'meta_or_recipient_pending',processed:0})
  if(!/^v\d+\.\d+$/.test(version)||!/^\d+$/.test(phoneId))return json({error:'meta_identifiers_invalid'},503)
@@ -46,6 +46,7 @@ Deno.serve(async(req)=>{
      if(error)throw Error('queue_finish_failed')
      results.push({id:job.id,state})
    }
+   let outboundAttempted=false
    try{
      const [orderResult,itemsResult]=await Promise.all([
        admin.from('orders').select('id,public_number,status,total,customer_snapshot,store_snapshot').eq('id',job.order_id).single(),
@@ -59,10 +60,48 @@ Deno.serve(async(req)=>{
      const buyer=safe(order.customer_snapshot?.trade_name||order.customer_snapshot?.full_name||'Comprador',60)
      const store=safe(order.store_snapshot?.store_name||'Fornecedor',60)
      const itemCount=(itemsResult.data||[]).reduce((sum,item)=>sum+Number(item.quantity||0),0)
+     // Generate and store the private, immutable supplier PDF before attempting WhatsApp.
+     const pdfResponse=await fetch(url+'/functions/v1/ibuild-order-pdf',{
+       method:'POST',
+       headers:{'Authorization':'Bearer '+service,'Content-Type':'application/json'},
+       body:JSON.stringify({order_id:job.order_id}),
+       signal:AbortSignal.timeout(30000)
+     })
+     const pdfPayload=await pdfResponse.json().catch(()=>({}))
+     if(!pdfResponse.ok||pdfPayload?.ok!==true||typeof pdfPayload.document?.storage_path!=='string'){
+       await finish(pdfResponse.status===400||pdfResponse.status===404||pdfResponse.status===409||pdfResponse.status===422?'FALHA_PERMANENTE':'FALHA_TEMPORARIA',null,'PDF privado indisponivel HTTP '+pdfResponse.status,120)
+       continue
+     }
+     const pdfDoc=pdfPayload.document
      const isMetaHello=String(config.template_name)==='hello_world'
+     let mediaId=''
+     if(!isMetaHello){
+       const {data:pdfBlob,error:downloadError}=await admin.storage.from('ibuild-order-pdfs').download(pdfDoc.storage_path)
+       if(downloadError||!pdfBlob){await finish('FALHA_TEMPORARIA',null,'Falha ao recuperar PDF privado.',120);continue}
+       const bytes=new Uint8Array(await pdfBlob.arrayBuffer())
+       if(bytes.length<100||bytes[0]!==37||bytes[1]!==80||bytes[2]!==68||bytes[3]!==70){
+         await finish('FALHA_PERMANENTE',null,'Conteudo PDF invalido.');continue
+       }
+       const file=new Blob([bytes],{type:'application/pdf'})
+       const form=new FormData()
+       form.append('messaging_product','whatsapp')
+       form.append('file',file,String(pdfDoc.file_name||'pedido.pdf'))
+       const mediaResponse=await fetch('https://graph.facebook.com/'+version+'/'+phoneId+'/media',{
+         method:'POST',headers:{Authorization:'Bearer '+accessToken},
+         body:form,signal:AbortSignal.timeout(18000)
+       })
+       const mediaResult=await mediaResponse.json().catch(()=>({}))
+       if(!mediaResponse.ok||typeof mediaResult?.id!=='string'){
+         const errorCode=safe(mediaResult?.error?.code||mediaResponse.status,30)
+         await finish(mediaResponse.status===429||mediaResponse.status>=500?'FALHA_TEMPORARIA':'FALHA_PERMANENTE',null,
+           'Meta upload PDF HTTP '+mediaResponse.status+' codigo '+errorCode,120)
+         continue
+       }
+       mediaId=mediaResult.id
+     }
      const template=isMetaHello
        ? {name:'hello_world',language:{code:'en_US'}}
-       : {name:config.template_name,language:{code:config.template_language},components:[{type:'body',parameters:[
+       : {name:config.template_name,language:{code:config.template_language},components:[{type:'header',parameters:[{type:'document',document:{id:mediaId,filename:safe(pdfDoc.file_name,100)}}]},{type:'body',parameters:[
            {type:'text',text:order.public_number},
            {type:'text',text:buyer},
            {type:'text',text:store},
@@ -70,6 +109,7 @@ Deno.serve(async(req)=>{
            {type:'text',text:String(itemCount)},
            {type:'text',text:origin+'/admin/pedidos'}
          ]}]}
+     outboundAttempted=true
      const response=await fetch('https://graph.facebook.com/'+version+'/'+phoneId+'/messages',{
        method:'POST',
        headers:{'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'},
@@ -91,7 +131,7 @@ Deno.serve(async(req)=>{
    }catch(error){
      // Tempo esgotado ou rede interrompida: não podemos provar que a mensagem não foi enviada.
      // Não reenviar automaticamente; decisão humana na fila.
-     try{await finish('RESULTADO_INCERTO',null,'Resposta da Meta inconclusiva; verificar antes de reenviar.')}catch{
+     try{await finish(outboundAttempted?'RESULTADO_INCERTO':'FALHA_TEMPORARIA',null,outboundAttempted?'Resposta da Meta inconclusiva; verificar antes de reenviar.':'Falha antes da tentativa de envio de mensagem.',120)}catch{
        results.push({id:job.id,state:'ERRO_AO_REGISTRAR_RESULTADO'})
      }
      console.warn('ibuild_message_uncertain',safe(error instanceof Error?error.name:'error',40))
