@@ -51,7 +51,7 @@ export function AdminAlertsPage() {
 
   useEffect(() => {
     void refresh()
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh() }, 20000)
+    const timer = window.setInterval(() => { void refresh() }, 20000)
     const focus = () => void refresh()
     window.addEventListener('focus', focus)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', focus) }
@@ -82,7 +82,7 @@ export function AdminAlertsPage() {
     <AdminNav />
     <section className="section-card">
       <div className="ops-toolbar">
-        <div><strong>{unread} não conferido(s)</strong><p>Atualização automática enquanto esta página estiver aberta.</p></div>
+        <div><strong>{unread} não conferido(s)</strong><p>Atualização automática enquanto esta página estiver aberta, inclusive em segundo plano quando o Chrome permitir.</p></div>
         <button className="secondary" onClick={() => void refresh()}>Atualizar agora</button>
         {canNotify() && <button className="secondary" disabled={notifyEnabled}
           onClick={() => void enableNotifications()}>{notifyEnabled ? 'Avisos do Chrome ativados' : 'Ativar avisos no Chrome'}</button>}
