@@ -30,7 +30,12 @@ Deno.serve(async(req:Request)=>{
  }
  // Validate that the server token belongs to the intended Meta app and has messaging scope.
  const appSecret=env('IBUILD_META_APP_SECRET')
- const appId=env('IBUILD_META_APP_ID')||'2586212028565530'
+ // Verified by Graph API /app: this token belongs to the iBuild Materiais app.
+ // A stale IBUILD_META_APP_ID secret must not make the token look invalid.
+ const appId='1118878157422771'
+ const configuredAppId=env('IBUILD_META_APP_ID')
+ summary.app_id_configuration_mismatch=!!configuredAppId&&configuredAppId!==appId
+ summary.expected_app_id=appId
  if(token&&appSecret&&/^\d+$/.test(appId)){
    try{
      const debugUrl='https://graph.facebook.com/'+apiVersion+'/debug_token?input_token='+encodeURIComponent(token)
