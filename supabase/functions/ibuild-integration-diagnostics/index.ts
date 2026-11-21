@@ -57,12 +57,18 @@ Deno.serve(async(req:Request)=>{
  }
  if(token&&isValidPhoneId(phoneId)&&/^v\d+\.\d+$/.test(apiVersion)){
    try{
-     const response=await fetch('https://graph.facebook.com/'+apiVersion+'/'+phoneId+'?fields=id,verified_name',{
+     const response=await fetch('https://graph.facebook.com/'+apiVersion+'/'+phoneId+'?fields=id,verified_name,display_phone_number,status,code_verification_status',{
        headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)
      })
      const result=await response.json().catch(()=>({}))
      summary.meta_phone_auth_ok=response.ok
      summary.meta_http_status=response.status
+     if(response.ok){
+       const display=typeof result.display_phone_number==='string'?result.display_phone_number:''
+       summary.configured_phone_last4=display.replace(/\\D/g,'').slice(-4)||null
+       summary.configured_phone_status=typeof result.status==='string'?result.status:null
+       summary.configured_phone_code_verification_status=typeof result.code_verification_status==='string'?result.code_verification_status:null
+     }
      if(!response.ok){
        summary.meta_error_code=sanitizeCode(result?.error?.code)
        summary.meta_error_subcode=sanitizeCode(result?.error?.error_subcode)
